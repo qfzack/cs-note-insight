@@ -142,7 +142,7 @@ GC的目标是把所有从根可达的对象都标记为黑色，其余的白色
 
 ## golang面向对象
 
-什么是面向对象
+### 什么是面向对象
 - 面向对象（OOP，object-oriented programming）是一种设计思想，通过对象来组织代码，强调将数据（状态）与行为（方法）绑定，并通过类、继承、多态、封装等机制实现灵活和可维护的程序结构
 - 核心思想：一切皆对象
   - 对象（object）：现实事物的抽象，对象可以有各种行为（方法）
@@ -159,7 +159,7 @@ GC的目标是把所有从根可达的对象都标记为黑色，其余的白色
 
 ## golang基础
 
-Go的特点和优势
+### Go的特点和优势
 - 简洁高效，语法清晰：没有类继承、多重继承、异常机制，语法易读易维护
 - 原生支持高并发：提供goroutine和channel实现并发编程模型，性能优于线程池模型
 - 编译速度快，可以静态编译为单个二进制文件，部署方便，执行性能接近C
@@ -167,7 +167,7 @@ Go的特点和优势
 - 与云原生/devops深度结合，k8s、docker、prometheus、etcd等云原生核心项目都是go写的
 - 适合开发CLI工具、API网关、Operator、微服务等
 
-Go的缺点和不足
+### Go的缺点和不足
 - 1.18之前没有泛型（[]int,[]string需要各写一份逻辑），现在虽然支持但是语法比较负责
 - 面向对象支持薄弱，只能用组合实现继承，没有构造函数，需要手动定义，没有方法重载，接口实现是隐式的
 - 异常处理机制较弱，没有try-catch-finally机制，需要使用if err!=nil进行判断
@@ -175,7 +175,7 @@ Go的缺点和不足
 - 第三方库和框架没有java/python丰富和成熟
 - 语言风格过于简化可能在复杂场景下被限制
 
-Go中make和new的区别
+### Go中make和new的区别
 - new(T)创建的是指向零值的指针，适用于所有类型
   - 适用于所有类型，int、struct、array或者自定义类型
   - 返回指针，返回的是*T类型，指向类型的零值
@@ -188,13 +188,13 @@ Go中make和new的区别
 > 使用new创建的map没有初始化，不能直接使用
 > var和new有些类似，都是分配内存和零值，并且是强类型的，返回的slice/map/chan都不能直接使用，只是new返回的是指针，var返回的就是实际地址
 
-for-range的地址会发生变化吗
+### for-range的地址会发生变化吗
 - for-range的循环变量是复制而不是引用
 - 对于`for _, v := range list`，其中v是循环内被复用的变量，v的地址不变，只是值在变
 - 当循环遍历完v的值是list最后一个，如果v被闭包捕获，这个值就会是最后一个
 - 如果在for-range中创建goroutine，需要复制一个变量作为参数传入
 
-defer的作用与执行顺序，底层数据结构是什么，什么情况会修改返回值
+### defer的作用与执行顺序，底层数据结构是什么，什么情况会修改返回值
 - defer的执行顺序是后进先出，先定义的defer最后执行
 - 当定义了`defer f(x)`，编译器会把x的值复制到一块内存上（栈或者堆上），然后创建_defer结构体并压入当前goroutine的defer链表中，在方法返回前，遍历_defer链表，以后进先出的顺序执行每个defer的函数指针和参数副本，然后释放defer占用的资源
 - defer参数值的确定：
@@ -217,7 +217,7 @@ func f() (x int) {
 }
 ```
 
-panic/recover机制是什么
+### panic/recover机制是什么
 - defer-recover是go错误处理机制，一般和panic搭配使用，可以优雅地拦截运行时异常、防止程序崩溃、起到异常恢复机制的作用，实现类似try-catch的效果
 - panic：触发运行时错误，终止当前方法并展开调用栈
 - defer：注册延迟调用的方法，在返回前或panic展开前执行
@@ -234,7 +234,7 @@ func safeDivide(a, b int) (result int) {
 }
 ```
 
-golang的基础类型有哪些，unit类型溢出的问题
+### golang的基础类型有哪些，unit类型溢出的问题
 - 布尔类型：
   - bool
 - 有符号整型
@@ -251,7 +251,7 @@ golang的基础类型有哪些，unit类型溢出的问题
   - rune(int32的别名)
 - 类型溢出是指一个变量超出了它的类型所能表示的最大/最小范围，如int8最大是127，再加1就到-128了
 
-rune类型是什么，和byte的关系
+### rune类型是什么，和byte的关系
 - byte不是字符类型，是uint8的别名，常用于表示单个原始字节
 - rune是字符类型（Unicode码点），是int32的别名，一个字符可能需要多个字节来表示
 - 一般处理字符串含义时用的rune，处理存储/传输用的byte
@@ -260,8 +260,7 @@ rune类型是什么，和byte的关系
   - `for _, r := range s`是按照rune遍历字符串的，r是rune类型
 > Unicode字符集几乎给世界上所有的字符都分配了一个唯一编号，这个编号就是Unicode码点，golang中的rune就是用来
 
-tag是怎么解析的，反射是什么，反射的原理是什么
-（实际应用gorm json yaml protobuf gin.Bind()）
+### tag是怎么解析的，反射是什么，反射的原理是什么（实际应用gorm json yaml protobuf gin.Bind()）
 - tag是结构体字段后的一段字符串，提供字段的元信息，可以通过反射机制读取，go不会处理tag，而是提供给第三方库解析或者自定义解析逻辑
 - tag的常见应用：
   - 用于JSON编码/解码
@@ -288,17 +287,17 @@ func main() {
   - 当把任何值传入interface{}，编译器会自动生成一个接口值结构：包括这个值的类型信息（type descriptor）和数据指针
   - 例如：执行`t := reflect.TypeOf(x)`及时参数`x:=10`，编译器在调用reflect.TypeOf的时候会将x转换为interface{}，然后拿到x的类型信息和数据指针
 
-调用Go方法时，传的是值还是指针
+### 调用Go方法时，传的是值还是指针
 - 值传递：将参数的副本传递给方法，方法内部对参数的修改不会影响原始的变量
 - 指针传递：将参数的地址传递给方法，方法内部可以通过地址来修改原始变量的值
 - go中所有的方法参数传递都是值传递，对于指针、切片、map、channel、interface等引用类型的值，它们看起来像是默认引用传递，因为它们本身就是引用类型
 
-单引号双引号反引号的区别
+### 单引号双引号反引号的区别
 - 单引号：表示单个字符（rune，实际上是int32），表示一个Unicode字符
 - 双引号：表示字符串（string）
 - 反引号：原始字符串字面量（string），不处理任何的转义字符，原样保留所有内容，包括换行、制表符等，常用于多行字符串、正则表达式、JSON等不想转义的内容
 
-什么情况下会出现panic
+### 什么情况下会出现panic
 - go中panic表示程序遇到了不可恢复的错误，它会导致当前的函数停止执行，沿调用栈向上传递，直到main函数或者goroutine的顶层，如果没有被recover()捕获，程序就会崩溃
 - 常见的出现panic的场景：
   - 显示调用panic()方法，这是开发者手动抛出panic
@@ -310,38 +309,38 @@ func main() {
   - 写入已关闭的channel（如果是nil channel会永远阻塞）
 - 一般来说go推荐使用error返回值处理可预期的错误，panic仅用于无法恢复的程序错误
 
-Go如何实现set
+### Go如何实现set
 - go不提供set类型，但是可以使用map实现set，`map[string]struct{}`中空结构体不占用内存
 
-Go如何实现类似java中的继承
+### Go如何实现类似java中的继承
 - go中使用结构体的组合（嵌入匿名字段）来实现继承
 - 通过interface定义方法，在struct实现来达到多态
 
-如何复用一个接口的方法
+### 如何复用一个接口的方法
 - interface也可以嵌入到其他的interface中，从而实现接口
 
-go里面`_`的使用场景
+### go里面`_`的使用场景
 - go里的`_`是一个特殊的标识符，被称为空白标识符，主要用于忽略不需要的值：
   - 忽略函数的返回值（类型断言`value, _ := i.(string)`）
   - 占位变量，for-range中使用_替换不需要使用的变量
   - 导入包但是不使用，相当于执行包的init方法
   - 检查类型是否实现了指定接口，`var _ io.Reader = (*MyReader)(nil)`
 
-goroutine的参数传递有什么需要注意的
+### goroutine的参数传递有什么需要注意的
 - 显示传递参数优于闭包引用外部参数
 - 避免共享引用类型
 - 福哦个goroutine共享变量时需要注意同步
 
-如何写go的单元测试
+### 如何写go的单元测试
 
-Go的依赖管理
+### Go的依赖管理
 > https://www.cnblogs.com/niuben/p/16182001.html
 
-golang如何单步调试
+### golang如何单步调试
 
-导入golang工程后有些依赖找不到怎么办
+### 导入golang工程后有些依赖找不到怎么办
 
-golang的深拷贝和浅拷贝的区别
+### golang的深拷贝和浅拷贝的区别
 - 浅拷贝与深拷贝的区别在于值复制的是偶时候会复制引用的数据：
   - 浅拷贝：只复制数据本身，不复制其引用指向的数据，多个对象共享同一个引用数据
   - 深拷贝：不仅复制对象本身，还会递归复制其引用指向的数据，两个对象完全独立
@@ -354,7 +353,7 @@ golang的深拷贝和浅拷贝的区别
   - function
 - 对于chan、func不能直接深拷贝
 
-golang中不同的类型如何比较是否相等
+### golang中不同的类型如何比较是否相等
 - 可以直接使用==比较的类型：
   - 基本数据类型，值相等
   - 指针类型，指向同一个地址
@@ -367,7 +366,7 @@ golang中不同的类型如何比较是否相等
   - map，是引用类型
   - function
 
-init方法的特征
+### init方法的特征
 - init方法是一个特殊的函数，用于在程序运行前初始化包的状态，是每个包中自动执行初始化的方法，在main之前前由go运行时自动调用，没有方法参数
 - 主要使用场景有：
   - 初始化变量：加载默认配置，设置常量值
@@ -382,7 +381,7 @@ init方法的特征
     - 再初始化当前的包
     - 每个包内部：先全局变量初始化，再执行init方法
 
-golang的多返回值怎么实现的
+### golang的多返回值怎么实现的
 > https://tiancaiamao.gitbooks.io/go-internals/content/zh/03.2.html
 - java中的方法只能有一个返回值，而go的方法可以有多个返回值
 - go编译器在函数调用和栈布局上做了特别支持：
@@ -390,7 +389,7 @@ golang的多返回值怎么实现的
   - 被调用函数直接把结果写到这块栈空间
   - 编译器生成的调用指令会约定返回值的位置和数量
 
-unitptr和unsafe.Pointer的区别
+### unitptr和unsafe.Pointer的区别
 - unsafe.Pointer
   - 特殊类型的指针，可以转换为任意类型的指针，或者从任意类型的指针转换过来
   - 作用是在不同指针类型之间进行转换，但不做运算，GC会跟踪
@@ -407,7 +406,7 @@ p := (*someType)(unsafe.Pointer(addr))  //偏移结果转换为unsafe.Pointer，
 
 ## Slice
 
-数组和切片的区别
+### 数组和切片的区别
 - 数组是固定长度的值类型，而切片是可变长度的引用类型，具体区别是：
   - 数组是固定长度的（`[N]T`）,长度在编译期固定，slice是不带长度的（`[]T`），长度和容量可变
   - 数组是值类型，复制会拷贝所有元素，slice是引用类型，复制后多个引用共享底层数组
@@ -418,7 +417,7 @@ p := (*someType)(unsafe.Pointer(addr))  //偏移结果转换为unsafe.Pointer，
   - 数组可以通过索引进行切片，切片的结果时slice，slice也支持切片
 > `[3]int`和`[4]int`不是同一类型的，因为对于数组类型，长度也是类型的一部分，因此如果有这两个变量，不能相互赋值
 
-slice的底层数据结构，扩容策略是什么
+### slice的底层数据结构，扩容策略是什么
 - slice是对数组的轻量级抽象，slice自身并不存储数据，而是通过slice header结构，引用底层数组的一部分
 - 切片的底层数据结构可以理解为：
 ```go
@@ -453,7 +452,7 @@ type slice struct {
   - 最终保证更好的内存使用率
 > https://juejin.cn/post/7136774425415794719
 
-使用数组和slice作为参数的区别，slice作为参数传递有什么问题
+### 使用数组和slice作为参数的区别，slice作为参数传递有什么问题
 - 数组和slice作为函数参数传递时：
   - 都是作为值传递，但是数组会进行数组拷贝，slice会拷贝slice header
   - 数组不共享底层数组，而切片传递的是slice header，因此共享底层数组
@@ -463,7 +462,7 @@ type slice struct {
   - 当多个副本共享底层数组，只要没发生扩容，一个副本修改元素会影响所有的
   - 当切片发生扩容，并超出容量，会创建一个新的底层数组，并拷贝旧的元素，返回新的slice header，因此与旧的slice不共享内存
 
-从数组中获取一个相同大小的slice有成本吗
+### 从数组中获取一个相同大小的slice有成本吗
 ```go
 arr := [5]int{1,2,3,4,5}
 slice := arr[:]
@@ -479,7 +478,7 @@ slice := arr[:]
 
 ## map
 
-哪些类型可以作为map的key
+### 哪些类型可以作为map的key
 - golang中map的key必须是可比较的（comparable）
 - 可以作为key的类型有：
   - 基本类型：bool、int、int8、int16、int32、int64、uint、uint8、uint16、uint32、uint64、uintptr、float32、float64、complex64、complex128、string
@@ -501,7 +500,7 @@ key := []int{1,2,3}
 m[key] = "slice"  //会报错：invalid map key type []int
 ```
 
-map的底层数据结构（hmap，bucket，解决哈希冲突的方法，负载因子）
+### map的底层数据结构（hmap，bucket，解决哈希冲突的方法，负载因子）
 - map的底层结构是一个hmap结构体：
 ```go
 type hmap struct {
@@ -543,7 +542,7 @@ type bmap struct {
 - 因为map的哈希表结构设计动态分配、扩容、溢出桶、迁移等复杂操作，并且这些操作没有加锁，因此并发写时会造成结构不一致，最终导致运行时崩溃（panic）
 
 
-使用map需要注意的点，是否并发安全
+### 使用map需要注意的点，是否并发安全
 - golang的map不是并发安全的，如果有多个goroutine同时对一个map进行读写操作，会导致race condition，程序可能会panic或产生不可预期的结果
 - 使用注意：
   - map需要先使用make或者:=初始化才能使用，否则是nil
@@ -552,14 +551,14 @@ type bmap struct {
   - map的扩容会有性能开销，因此可以先预分配容量
   - map的并发安全问题可以使用sync.Mutex互斥锁或者sync.RWMutex读写锁来解决，或者使用sync.Map
 
-map中删除一个key，它的内存会释放吗（内存标记与垃圾回收）
+### map中删除一个key，它的内存会释放吗（内存标记与垃圾回收）
 - 如果key-value时直接存储在map中的基本类型（如int、string等），删除后这些内存会标记为可回收
 - 如果value是引用类型，删除key后，指针指向的对象是否释放取决于是否有其他引用
 > 标记为可回收后需要等待GC扫描
 > map的内部结构不会自动shrink（缩容），因此即使删除了很多元素，map的底层内存结构可能并不会减小
 > 如果想要释放map的内存，需要重新分配一个map或者置为nil
 
-map为nil和map为空的区别是什么（初始状态和内存占用，对增删改查的影响）
+### map为nil和map为空的区别是什么（初始状态和内存占用，对增删改查的影响）
 - map初始化的区别
   - 使用var声明一个map的值为nil，占用0字节（仅仅是一个nil指针），没有分配任何底层数据结构，不能直接使用
   - 使用make或:=创建的是一个空map，但是分配了hmap结构体（约48字节），并初始化bucket数组，可以直接使用
@@ -572,7 +571,7 @@ map为nil和map为空的区别是什么（初始状态和内存占用，对增�
   - 每个bucket可以存储最多8个key-value对
   - 每个bucket是一个包含8个槽位的数据结构
 
-map的插入过程
+### map的插入过程
 - 前置检查
   - 检查h.flags是否有写标志（flags的值为0x01）
   - 如果有说明发生并发写入，触发panic
@@ -598,7 +597,7 @@ bucketIndex := hash & bucketMask  //取hash的低B位
   - 如果当前的bucket槽位都满了，则创建新的overflow bucket
   - 在新的bucket插入key-value，将map的count加一，并清除写标志
 
-查找的过程
+### 查找的过程
 - 使用类型特定的哈希函数计算key的哈希值
 - 使用哈希值的低B位确定bucket的编号，定位到对应的bucket
 - 如果map正在扩容：
@@ -607,7 +606,7 @@ bucketIndex := hash & bucketMask  //取hash的低B位
 - 计算tophash，将hash值的高8位作为tophash，遍历bucket的槽（8个）使用tophash快速过滤，然后再判断key相等，找到则返回value
 - 如果没有找到对应的key，且overflow不为空，则继续遍历overflow指向的下一个bucket
 
-map的渐进式扩容
+### map的渐进式扩容
 - go的map的渐进式扩容不会一次把所有旧数据迁移到新的buckets中，而是边读写边迁移，避免卡顿
 - 一次性迁移中，如果map很大（百万计），一次迁移要花较长时间，带来明显的延迟
 - 触发扩容：
@@ -627,7 +626,7 @@ map的渐进式扩容
   - 当nevacuate等于旧的bucket的数量，则完成迁移，将oldbuckets置为nil，map扩容结束
 > 对于写操作，除了迁移当前的bucket，还会额外迁移下一个连续的未迁移的bucket，来推进迁移的进度
 
-如何保证所有的bucket都能被迁移
+### 如何保证所有的bucket都能被迁移
 - 读操作会迁移当前的bucket，而写操作不仅迁移当前的bucket，还会顺序推进nevacute指向的下一个未迁移的bucket
 - 跳跃式推进：
   - nevacute会跳过已经迁移的bucket，指向下一个未迁移的bucket
@@ -635,13 +634,13 @@ map的渐进式扩容
   - 每次会迁移当前访问的bucket（可以是任意编号）
   - 以及迁移nevacute指向的bucket，保证顺序覆盖
 
-可以对map里的一个元素取地址吗
+### 可以对map里的一个元素取地址吗
 - 不能安全地对map中的元素取地址
 - map是一个动态数据结构，元素在内存中消失或者重新分配：
   - map自动扩容，导致bucket重新分配，因此map元素的地址不是稳定的
   - map中的key/value不一定实际留在某个固定位置，而是可能被复制或移动
 
-sync.Map是什么，它的锁机制和使用map加锁有区别吗
+### sync.Map是什么，它的锁机制和使用map加锁有区别吗
 - sync.Map是go标准库中专门为并发读多写少的场景设计的并发安全的Map，不是简单的使用Mutex包围map，而是采用了分段锁（sharded locking）和无锁优化读
 ```go
 type Map struct {
@@ -663,11 +662,11 @@ type Map struct {
 
 ## interface
 
-go语言和鸭子类型的关系
+### go语言和鸭子类型的关系
 - 鸭子类型的核心理念：如果一只鸟走起来像鸭子，叫起来也像鸭子，那它就是鸭子
 - 对于golang就是：一个类型实现了某个接口中定义的所有方法，就可以被视为实现了该接口
 
-值接收者和指针接收者的区别，分别在什么时候使用
+### 值接收者和指针接收者的区别，分别在什么时候使用
 - go中接受者（receiver）是方法定义中的一个重要概念，是方法签名中类型名称前面的参数，指定了哪个类型可以调用这个方法
 - 值接收者
   - 方法接收的是类型值的副本
@@ -685,7 +684,7 @@ go语言和鸭子类型的关系
 > 值类型T方法的方法集，只包含值接收者的方法
 > 指针类型*T的方法集，包含值接收者和指针接收者的所有方法
 
-iface和eface的区别是什么
+### iface和eface的区别是什么
 - go中的iface和eface是两种不同的接口内部表示结构，主要区别是：
 - eface（empty interface）
   - 表示空接口interface{}
@@ -721,7 +720,7 @@ type iface struct {
 }
 ```
 
-接口的动态类型和动态值
+### 接口的动态类型和动态值
 - 动态类型和动态值共同构成了接口的运行时表示
 - 动态类型
   - 接口变量当前实际存储的具体类型
@@ -732,11 +731,11 @@ type iface struct {
 - 动态类型可能是int、string、struct等类型，动态值可能是具体的int、string、struct实例等值
 - nil接口（只用var声明）的动态类型和动态值都是nil
 
-编译器自动检测类型是否实现接口
+### 编译器自动检测类型是否实现接口
 - go编译器会在编译时检查类型是否实现了接口
 - 也可以显示地检查接口实现，`var _ Writer = (*MyFile)(nil)`或者`var _ Writer = MyFile{}`可以检查*MyFile或MyFile是否实现了Writer接口
 
-类型转换和断言的区别
+### 类型转换和断言的区别
 - 类型转换是在编译时进行的，用于在已知的类型之间进行转换
   - `T(value)`用于把value转换为类型T
 - 类型断言是在运行时进行的，用于从接口类型中提取具体的类型
@@ -746,7 +745,7 @@ value, ok := value.(T) //安全断言
 value := value.(T) //不安全断言，失败会panic
 ```
 
-如何使用接口实现多态
+### 如何使用接口实现多态
 ```go
 type Animal interface {
     Speak() string
@@ -769,7 +768,7 @@ func main() {
 }
 ```
 
-go的接口的特点
+### go的接口的特点
 - 隐式实现：golang的接口实现是隐式的，不需要显示声明实现某个接口，只要类型实现了接口中定义的所有方法，就自动实现了该接口
 - Duck Typing：遵循“如果它走起来像鸭子，叫起来像鸭子，那它就是鸭子”的原则，关注的是行为而不是类型声明
 - 组合型：接口可以嵌入到其他的接口中，形成新的接口，这种组合比继承更灵活
@@ -777,16 +776,16 @@ go的接口的特点
 - 动态类型：接口在运行时可以持有任何实现了该接口的具体类型
 - 接口比较：接口的比较基于动态类型和动态值，且值的类型必须可比较，当动态类型和动态值相等时接口相等
 
-接口的构造过程是怎样的
+### 接口的构造过程是怎样的
 
-接口转换的原理
+### 接口转换的原理
 
 ## go runtime
 
-go runtime是什么
+### go runtime是什么
 - go的运行时系统（runtime）是go的核心组成部分，负责管理goroutine的调度（GMP）、垃圾回收、内存分配、系统调用等底层操作
 
-使用goroutine的注意事项
+### 使用goroutine的注意事项
 - 内存泄漏和生命周期管理：goroutine不会被自动回收，如果创建的goroutine没有正常退出，会导致内存泄漏，因此
   - 确保goroutine有明确的退出条件
   - 避免创建永远不会结束的goroutine
@@ -806,7 +805,7 @@ go runtime是什么
 
 ## GMP
 
-进程、线程、协程之间的区别
+### 进程、线程、协程之间的区别
 - 进程
   - 操作系统资源分配的最小单位
   - 每个进程拥有独立的内存空间、文件描述符、堆栈、代码段等资源
@@ -822,7 +821,7 @@ go runtime是什么
   - 切换成本极低，不涉及内核态操作，适合大规模并发
   - 可以主动让出控制权（非抢占式，也可以抢占）
 
-GMP模型是什么，GMP如何工作的
+### GMP模型是什么，GMP如何工作的
 - GMP模型是go实习爱你并发调度的核心机制，包括：
   1. Goroutine：使用go func()创建的轻量级线程（协程），代表一个要执行的并发任务
      - 每个Goroutine有自己的栈和相关的上下文信息
@@ -844,7 +843,7 @@ GMP模型是什么，GMP如何工作的
   6. Goroutine被执行完后，Machine会继续获取下一个Goroutine执行
   7. 如果Processor本地队列为空，Processor会尝试从其他Processor那里偷来Goroutine（work stealing）来保持高利用率
 
-什么是Goroutine的抢占式调度，它是如何实现的
+### 什么是Goroutine的抢占式调度，它是如何实现的
 - 抢占式调度是指调度器在运行中能强制中断正在执行的Goroutine，把执行权交给其他的Goroutine，而不是一直等当前的Goroutine让出CPU
 - 为什么需要抢占：
   - 如果某个goroutine一直占用CPU（如死循环），不会主动让出CPU，会导致其他goroutine得不到调度，系统整体响应变差
@@ -853,10 +852,10 @@ GMP模型是什么，GMP如何工作的
   - 当一个Goroutine的时间片用尽，即执行时间超过了一定的阈值，运行时系统会中断该goroutine的执行，切换到其他可运行的Goroutine的上继续执行
   - 当一个Goroutine主动调用runtime.Gosched()方法，它会主动让出当前Goroutine的执行权
 
-goroutine的窃取机制是什么，怎么实现的
+### goroutine的窃取机制是什么，怎么实现的
 - goroutine窃取机制是go调度器来让所有的Processor的负载均衡，当一个Processor的本地队列空了，而全局队列也没有goroutine时，就会去其他Processor的队列中窃取一半的goroutine来执行，保证CPU利用率和负载均衡
 
-gorontine在什么情况下会阻塞
+### gorontine在什么情况下会阻塞
 - channel操作阻塞
   - 发送阻塞：goroutine在往无缓冲通道或满缓冲通道发送数据时，没有接收者
   - 接收阻塞：从空通道接收数据时，没有发送者
@@ -884,7 +883,7 @@ func main() {
 
 ## channel
 
-CSP模型是什么，golang中如何使用的
+### CSP模型是什么，golang中如何使用的
 -  CSP（Communicationg Sequential Processes）是一种并发编程模型，主要描述多个独立进程之间如何通过通信进行协作，其思想是进程之间不共享内存，而是通过通信来共享信息
 -  CSP模型的核心概念：
    -  进程：独立执行的逻辑单元，类似goroutine、线程等
@@ -902,7 +901,7 @@ CSP模型是什么，golang中如何使用的
    -  如果通信顺序不当，仍然可能出现死锁
    -  如果多个进程频繁共享大数据，传输效率低
 
-channel的底层原理
+### channel的底层原理
 > https://juejin.cn/post/6844903821349502990
 - 代码中创建的`ch := make(chan int)`中，`ch`是一个引用类型，其底层的结构体是`runtime.hchan`（heap channel，分配在堆上），主要包括：
   - `qcount`：当前缓冲区元素的数量
@@ -923,7 +922,7 @@ channel的底层原理
   - 如果缓冲区满了，发送协程就会被挂入`sendq`
   - 如果缓冲区空了，接收协程就会被挂入`recvq`
 
-channel是否线程安全，锁用在什么地方
+### channel是否线程安全，锁用在什么地方
 - channel是并发安全的，可以使用多个goroutine同时对同一个chan进行读写，且不用额外加锁
 - chan加锁的情况（slow-path）
   - 缓冲区满的时候会加锁阻塞发送
@@ -941,7 +940,7 @@ channel是否线程安全，锁用在什么地方
   - 是否数据可以直接交换
 - fast-path不满足才会进入slow-path
 
-nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎么样
+### nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎么样
 - channel为nil（`var ch chan int`）：
   - 发送数据会永远阻塞
   - 接收数据会永远阻塞
@@ -955,7 +954,7 @@ nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎
   - 读取成功或者阻塞
   - 可以正常关闭
 
-向channel发送数据和读取数据的流程是什么
+### 向channel发送数据和读取数据的流程是什么
 - 发送数据的流程
   1. 判断channel是否为nil
   2. fast-path
@@ -980,29 +979,29 @@ nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎
      - 否则判断如果允许阻塞，挂入recvq，挂起goroutine
      - 解锁
 
-channel在什么情况下会引起资源泄露
+### channel在什么情况下会引起资源泄露
 - channel阻塞，goroutine被永久挂起（发送的数据没有接收者）
 - 接收端永远等待数据，导致goroutine阻塞
 - 未关闭的channel导致下游goroutine阻塞
 - select阻塞在没有发送或者关闭的channel
 - 无缓冲的channel在发送或接收异常退出（如主gorouotine退出，子goroutine永远挂起）
 
-select的原理和一些特性（项目中怎么使用的select）
+### select的原理和一些特性（项目中怎么使用的select）
 - select是一个专门用于处理多个channel操作的控制结构，类似于switch，是专门为channel设计的，可以使用select同时监听多个channel的读写操作，一个某个操作可以继续执行，就会执行响应的分支
 - select的规则：
   - 并发监听多个channel，select会阻塞直到某个case准备好，如果有多个case可以执行，会随机选择一个
   - 如果所有的case都没准备好，但存在default，会立即执行default，可以用来实现非阻塞的操作
   - 添加一个case使用time.After可以实现超时控制
 
-有缓存的channel和无缓存的channel
+### 有缓存的channel和无缓存的channel
 
-channel的读写特性
+### channel的读写特性
 
-channel的底层实现原理（数据结构）
+### channel的底层实现原理（数据结构）
 
 ## context
 
-context是什么，为什么需要context，context的结构是什么
+### context是什么，为什么需要context，context的结构是什么
 - go中context是用来在多个goroutine之间传递取消信号、超时控制、截止时间和请求范围内的共享数据的一种标准机制
 - 多个goroutine处理同一个请求时，就需要：
   - 统一取消所有关联的goroutine（如请求超时或者用户取消）
@@ -1015,7 +1014,7 @@ context是什么，为什么需要context，context的结构是什么
   - `Err() error `取消原因
   - `Value(key interface{}) interface{}`传递的键值对数据
 
-context有哪些使用场景和用途，有哪些常用的方法
+### context有哪些使用场景和用途，有哪些常用的方法
 - 使用场景
   - 控制HTTP请求的生命周期
   - 数据库查询超时控制
@@ -1032,11 +1031,11 @@ context有哪些使用场景和用途，有哪些常用的方法
 
 ## 内存分配与垃圾回收
 
-垃圾识别算法
+### 垃圾识别算法
 - 引用计数法
 - 可达性分析法
 
-垃圾清理算法
+### 垃圾清理算法
 - 标记清除法
 - 标记复制法
 - 标记压缩法
