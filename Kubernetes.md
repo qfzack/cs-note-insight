@@ -1,252 +1,383 @@
-简述ETCD及其特点
-- etcd是一个开源、高可用的分布式键值存储系统，用于存储配置数据、服务发现信息、元数据等，etcd是K8s的核心组件之一，主要负责存储集群中所有的状态数据，如Pod、Service、ConfigMap、Secrets等，并且使用Raft一致性算法来保证分布式系统中的数据一致性和可靠性
-- etcd的特点：
-  - 分布式架构：etcd采用分布式设计，支持集群部署，通常以奇数个节点运行，确保高可用性和容错能力
-  - 强一致性：使用Raft算法确保多节点间的数据一致，读写顺序严格
-  - 高可用性：支持多节点部署，Raft实现leader-follower架构，可以在部分节点宕机的情况下继续提供服务
-  - watch机制：支持客户端监听某个key或目录下的变更，实现事件驱动、服务发现等功能
-  - 事务支持（Txn）：提供原子性操作，可以通过事务一次执行多个操作，确保操作的一致性
-  - restful API：提供简单易用的HTTP+JSON API，支持跨语言客户端调用
-  - 性能优秀：在高并发、高负载下仍能够保持良好的响应时间和吞吐率
-  - 数据持久化：支持将数据落到磁盘，防止数据丢失
+## ETCD
 
-为什么选择Raft而不是Paxos
-- Paxos是一个强一致性算法，和Raft的相同点：
-  - 都是为了在分布式环境中实现强一致性，确保多个节点对同一个值达成共识
-  - 都要超过半数节点同意才能达成共识，这是保证一致性的核心机制
-  - 都能容忍少于半数的节点故障
-  - 都可以实现分布式状态机，确保个节点按相同顺序执行相同操作
-- 但是有以下缺点：
-  - 实现复杂
-  - 只解决一致性问题，不包含leader选举、日志复制等操作
-  - 系统故障时难以排查
-- etcd选择Raft是为了实现可读性强、易于维护、且更工程化的一致性算法
+### 简述ETCD及其特点
 
-简述ETCD适应的场景
-- 配置管理：存储和分发应用配置信息
-- 服务发现：维护服务注册表和健康状态
-- 分布式锁：实现分布式系统的互斥访问
-- 选主协调：在分布式系统中选举主节点
-- 元数据存储：如k8s中存储集群状态信息
+etcd是一个开源、高可用的分布式键值存储系统，是K8s的核心组件之一，主要负责存储集群中所有的状态数据，如Pod、Service、ConfigMap、Secrets等，并且使用Raft一致性算法来保证分布式系统中的数据一致性和可靠性，主要特点是：
 
-如何排查etcd的性能问题
-- etcd的性能问题通常体现在延迟高、写入慢、集群不稳定，排查方向为：
-  - 检查leader的状态：使用etcdctl命令
-  - 检查Raft日志复制的延迟：查看raftIndex、appliedIndex是否同步，follower是否滞后较多，可能是网络或者磁盘慢
-  - 检查watch和lease压力：过多的watch会导致CPU和内存占用增加，租约（lease）数量过多也会拖慢etcd
-  - 检查满请求日志（关键）：`journalctl -u etcd | grep "took too long"`定位具体的慢写操作
-  - 使用metrics+grafana监控：使用etcd暴露的prometheus指标可以监控请求速率、WAL写入延迟、DB fsync延迟、leader选举频率
+- 分布式架构：etcd采用分布式设计，支持集群部署，通常以奇数个节点运行，确保高可用性和容错能力
+- 强一致性：使用Raft算法确保多节点间的数据一致，读写顺序严格
+- 高可用性：支持多节点部署，Raft实现leader-follower架构，可以在部分节点宕机的情况下继续提供服务
+- watch机制：支持客户端监听某个key或目录下的变更，实现事件驱动、服务发现等功能
+- 事务支持（Txn）：提供原子性操作，可以通过事务一次执行多个操作，确保操作的一致性
+- 性能优秀：在高并发、高负载下仍能够保持良好的响应时间和吞吐率
+- 数据持久化：支持将数据落到磁盘，防止数据丢失
 
-简述什么是K8s，K8s的架构是什么
-- K8s是一个开源容器编排平台，用于自动化容器化应用的部署、扩缩容、负载均衡和故障恢复，目的是实现自动部署和调度容器、资源利用最大化、高可用和自愈能力以及易于扩展和管理的能力
-- K8s是一个主从（Master-Worker）架构：
-  - Master节点：
-    - API server：集群的统一入口，所有组件通过它通信
-    - Controller Manager：管理控制循环，确保目标状态达成
-    - Scheduler：负责将Pod调度到合适的节点
-    - ETCD：分布式数据库，存储所有的状态信息
-    - Kubelet：负责与API server通信，管理本地容器生命周期
-    - Kube Proxy：负责Service网络代理和负载均衡
-  - Worker节点：
-    - Kubelet
-    - Kube Proxy
-    - Container（CRI）：Pod内运行的容器
+### ETCD如何保证数据一致性
+
+Raft算法是一个用于构建**分布式一致性系统**的共识算法，目标是在一组节点中保证状态的一致性，即使部分节点宕机或者通信失败仍能保证系统可用性，其核心是：
+
+- 领导者选举
+- 日志复制
+- 日志一致性和故障恢复
+
+Raft中每个节点都处于三种角色之一：**Leader**、**Follower**、**Candidate**，每个etcd节点启动的时候是**Follower**，超时未收到Leader的心跳（AppendEntries）就会：
+
+- 将自己变为Candidate
+- 发起RequestVote请求给其他节点
+- 如果获得了多数节点的投票，就成为新的Leader
+
+投票规则是每个任期（term）内，每个节点只能投票一次，并且倾向于投票给日志比自己更完整的节点（index更新，term更高，日志结构为`<term, index, command>`）
+
+当Leader被选举出来后，客户端发送的写请求处理流程为：
+
+- 请求被etcd的Leader接收，或者从Follower重定向过来
+- Leader将请求日志追加到自己的Write-Ahead Log（WAL）确保宕机之后可恢复（uncommitted）
+- 通过AppendEntries发送给Follower（心跳携带日志），Follwer将日志写入WAL
+- 一旦超过半数的Follower确认日志写入并响应，Leader将日志标记为已提交（commitIndex更新）
+- Leader和Follwer将提交该日志并应用到状态机（更新真实数据）
+- 向客户端返回成功响应
+
+通过Raft算法保证分布式系统强一致性：
+
+- **多数仲裁（Quorum）机制**：任意时刻只要超过半数节点一致，就能保证系统继续运行，即使部分节点宕机，只要多数节点存活，就可以保证一致性
+- **写入流程**：通过apiserver将写入请求发送到Leader，Leader将操作日志（每次对系统状态变更的操作日志）复制到Followers，当多数Followers确认日志写入，数据才会被Leader提交到key-calue存储并向apiserver返回成功
+- **读操作的一致性**：默认是从Leader读取，保证强一致性，也可以配置为从Follower读（性能高但是可能不是最新的数据，弱一致性）
+
+### 脑裂是什么
+
+脑裂是指在一个分布式系统中，由于网络分区等原因，集群被分裂成了多个互相无法通信的子集，每个子集都认为自己是唯一的主节点或者主集群，导致数据不一致
+
+Raft协议中规定只有得到半数以上的投票才能成为Leader，当集群被分区，不会出现多个Leader，并且总有一个分区有半数以上的节点（奇数个总节点数），可以选举出Leader
+
+当etcd出现脑裂无法选举出Leader时，etcd集群不可写入数据，从而避免数据不一致，但是可以提供读服务（弱一致性），只有选举出Leader后才能正常提供写服务，当etcd集群恢复后，Followers会自动同步Leader的日志同步
+
+### 复制到Followers的日志有什么作用
+
+- 保证数据一致性
+  - Raft协议中，系统状态不是直接同步的，而是通过复制日志来同步的，如果日志不同步，状态也一定不同
+  - 所有的状态变更必须先写到日志中，才能被提交和应用
+- 容错恢复
+  - Leader和Followers有一致的日志副本，当Leader宕机或崩溃，Follower可以快速替换成新的Leader
+  - 新的Leader会和落后的Followers对比日志的索引和term，发现冲突就回滚，到一致为止（日志重写）
+- 投票选举
+  - Raft中日志越完整的节点越有可能成为Leader
+  - 选举过程中，每个节点都会告诉其他节点自己最新的日志位置（term和index），每个节点都只会投票给不落后于自己的节点，来保证日志不后退
+- 实现线性一致性
+  - 日志是有序的操作序列，可以保证所有节点在相同顺序下应用相同的操作，可以得到相同的状态
+
+### 简述ETCD适应的场景
+
+> https://juejin.cn/post/6844904162791014407?searchId=20250731212430E43FAA7ABA321B575AB8
+
+- 键值对存储：etcd本质是一个键值存储数据库
+- 服务注册与发现：基于Raft算法的etcd是一个强一致性、高可用的存储服务，可以用于注册服务和查找服务
+- 消息发布与订阅：可以作为分布式系统中的消息共享中心，实现消息的分布与订阅
+- 分布式通知与协调：类似消息发布订阅，构建一个配置共享中心，当有消息发布时提醒订阅者
+- 分布式锁：同样基于Raft算法保持数据的强一致性，可以用于实现分布式锁
+
+### 为什么选择Raft而不是Paxos
+
+Paxos是一个强一致性算法，和Raft的相同点：
+
+- 都是为了在分布式环境中实现强一致性，确保多个节点对同一个值达成共识
+- 都要超过半数节点同意才能达成共识，这是保证一致性的核心机制
+- 都能容忍少于半数的节点故障
+- 都可以实现分布式状态机，确保个节点按相同顺序执行相同操作
+
+但是有以下缺点：
+
+- 实现复杂
+- 只解决一致性问题，不包含leader选举、日志复制等操作
+- 系统故障时难以排查
+
+etcd选择Raft是为了实现可读性强、易于维护、且更工程化的一致性算法
+
+### 如何排查etcd的性能问题
+
+etcd的性能问题通常体现在延迟高、写入慢、集群不稳定，排查方向为：
+
+- 检查leader的状态：使用etcdctl命令
+- 检查Raft日志复制的延迟：查看raftIndex、appliedIndex是否同步，follower是否滞后较多，可能是网络或者磁盘慢
+- 检查watch和lease压力：过多的watch会导致CPU和内存占用增加，租约（lease）数量过多也会拖慢etcd
+- 检查满请求日志（关键）：`journalctl -u etcd | grep "took too long"`定位具体的慢写操作
+- 使用metrics+grafana监控：使用etcd暴露的prometheus指标可以监控请求速率、WAL写入延迟、DB fsync延迟、leader选举频率
+
+## Kubernetes
+
+### 简述什么是K8s，K8s的架构是什么
+
+K8s是一个开源容器编排平台，用于自动化容器化应用的部署、扩缩容、负载均衡和故障恢复，目的是实现自动部署和调度容器、实现资源利用最大化、高可用和自愈能力以及易于扩展和管理的能力
+
+K8s是一个主从（Master-Worker）架构：
+
+- Master节点：
+  - API server：集群的统一入口，所有组件通过它通信
+  - Controller Manager：管理控制循环，确保声明的目标状态达成
+  - Scheduler：负责将Pod调度到合适的节点
+  - ETCD：分布式数据库，存储所有的状态信息
+  - Kubelet：负责与API server通信，管理本地容器生命周期
+  - Kube Proxy：负责Service网络代理和负载均衡
+- Worker节点：
+  - Kubelet
+  - Kube Proxy
+  - Container（CRI）：Pod内运行的容器
+
 > control plane包括api-server、etcd、scheduler、controller-manager
-- 核心机制：
-  - 控制器模式：监控资源当前状态，并使其趋向于期望状态
-  - 声明式API：通过YAML表示期望状态，然后交由控制器调整状态
-  - 资源调度：使用调度策略（资源需求、亲和性、反亲和性、污点容忍）将Pod分配到合适的节点
-  - 事件驱动与watch机制：使用etcd+watch实时感知资源变化
-  - 自愈能力：容器或节点异常自动恢复
-  - 扩展机制（CRD+Controller）
+
+核心机制：
+
+- 控制器模式：监控资源当前状态，并使其趋向于期望状态
+- 声明式API：通过YAML表示期望状态，然后交由控制器调整状态更新
+- 资源调度：使用调度策略（资源需求、亲和性、反亲和性、污点、容忍）将Pod分配到合适的节点
+- 事件驱动与watch机制：使用etcd+watch实时感知资源变化
+- 自愈能力：容器或节点异常自动恢复
+- 扩展机制（CRD+Controller）
+
 > 核心机制可以简述为：**声明式状态管理+控制循环**
 
-简述K8s和docker的关系
+### 简述K8s和docker的关系
+
 - docker是容器引擎，而k8s是容器编排平台
 - 早期k8s使用docker作为默认的容器运行时（CRI实现），docker负责启动容器，k8s负责调度
 - 现在k8s引入了CRI，解耦了与docker的绑定，目前主流的运行时是containerd、CRI-O
 
-简述K8s中什么是Heapster、Minikube、Kubectl、Kubelet
+### 简述K8s中什么是Heapster、Minikube、Kubectl、Kubelet
+
 - Heapster是k8s早期用于性能监控与指标采集的组件，主要用于收集各个节点和容器的CPU、内存、网络等指标，已经在1.13中被废弃，使用Metrics Server + Prometheus代替
 - Mimikube：一个轻量级的本地k8s集群，适用于开发与测试
 - kubectl：k8s的命令行工具，用于操作集群资源、查看状态、调试问题等，实际是通过调用API server的REST接口进行通信
 - kubelet：运行在每个工作节点上的核心服务，负责接收API server下发的Pod信息、监控容器状态、与容器运行时交互、报告节点健康、Pod状态到控制平面
 
-K8s常见的部署模式
+### K8s常见的部署模式
+
 - 单节点部署（All-in-One）：用于本地开发/测试，所有组件部署在一个主机上，简单但不具有高可用性
 - 标准集群部署（Master+Worker）：用于生产/企业环境，控制面与工作节点分开，具备扩展性和基本高可用能力
 - 高可用集群（HA）：用于金融/大规模系统，多个Master节点+etcd集群+VIP/负载均衡器，保证容错和稳定新
 - 云托管部署（Managed K8s）：用于快速上线/降低运维成本，如AWS EKS、GKE、ACK，控制面由云厂商托管，用户只管Worker节点
-- 边缘部署（k3s/kubeedge）：用于IoT/边缘计算，轻量化、适配低资源设备，简化组件、节省资源
+- 边缘部署（k3s/kubeEdge）：用于IoT/边缘计算，轻量化、适配低资源设备，简化组件、节省资源
 
-容器和主机部署应用的区别是什么
-- 主机部署（裸机部署/传统部署）：应用直接运行在物理机或者操作系统上，共享整个主机环境
-- 容器部署（基于容器的部署）：应用运行在独立的容器中，容器由容器运行时（如docker、containerd）管理
-- 主要区别：
-  - 隔离性：主机部署是进程级别隔离，多个应用共享系统资源，而容器通过namespace、cgroups实现高隔离
-  - 启动速度：主机部署启动慢，需要加载整合操作系统，容器部署启动快，秒级启动，仅包含应用和依赖
-  - 资源占用：主机部署占用资源较高，容器占用资源小（共享宿主机内核）
-  - 部署方式：主机部署通过手动配置或者脚本管理，容器部署通过容器镜像和编排系统
-  - 可移植性：应用受限于运行环境差异，镜像封装一切依赖，任意平台运行一致
-  - 运维管理：更新/扩缩容繁琐容易出错，容器镜像和编排系统可以实现自动化管理
-  - 安全性：难以限制进程权限，出错影响整机，容器有隔离但是共享内核，安全可控但是仍需额外加固
-  - 日志/网络：依赖传统syslog、服务配置，容器有标准化日志输出、网络插件等机制
+### 容器和主机部署应用的区别是什么
 
-K8s如何实现集群的管理，简述K8s的优势、适应场景及其特点
-- k8s采用控制平面（Control Plane）+节点（Node）的架构，使用核心组件协同完成集群管理：
-  - 用户通过kubectl或者ci/cd工具向API server提交资源定义（如Pod，deployment）
-  - scheduler决定哪个节点运行这些Pod
-  - kubelet监听调度到本节点的Pod并调用容器运行时启动容器
-  - controller manager保证系统状态和用户期望一致
-  - 所有状态写入etcd，供系统其他部分读取
-- k8s的优势
-  - 弹性伸缩：支持基于资源使用的自动扩容/缩容（如HPA、VPA、cluster autoscaler）
-  - 自愈能力：Pod异常自动重启、重新调度，保持高可用
-  - 负载均衡与服务发现：cluster/nodeport/loadbalance机制+DNS自动解析
-  - 声明式管理：所有资源使用YAML声明式配置，利于版本控制和可追溯
-  - 自动部署与滚动更新：支持无停机部署、回滚等能力
-  - 生态丰富：有丰富的云原生工具可以集成
-  - 跨平台支持：支持公有云、私有云、本地环境部署，平台无关性强
-- 适用场景：
-  - 微服务架构部署：服务数量多、生命周期变更频繁，k8s可以统一管理
-  - devops持续交付：搭配gitops/cicd实现自动化部署
-  - 混合云/多云部署：管理多个不同环境下的工作负载，保持一致性
-  - 大数据/AI作业调度：可以调度GPU/TPU资源，完成批处理任务、分布式训练
-  - 边缘计算场景：通过k3s、kubeEdge等适配边缘计算环境
-  - 高可用、弹性伸缩要求强的业务：电商促销、视频直播等瞬时高并发业务
+主机部署（裸机部署/传统部署）：应用直接运行在物理机或者操作系统上，共享整个主机环境
 
-K8s的缺点或当前的不足之处
+容器部署（基于容器的部署）：应用运行在独立的容器中，容器由容器运行时（如docker、containerd）管理
+
+主要区别：
+
+- 隔离性：主机部署是进程级别隔离，多个应用共享系统资源，而容器通过namespace、cgroups实现高隔离
+- 启动速度：主机部署启动慢，需要加载整合操作系统，容器部署启动快，秒级启动，仅包含应用和依赖
+- 资源占用：主机部署占用资源较高，容器占用资源小（共享宿主机内核）
+- 部署方式：主机部署通过手动配置或者脚本管理，容器部署通过容器镜像和编排系统
+- 可移植性：应用受限于运行环境差异，镜像封装一切依赖，任意平台运行一致
+- 运维管理：更新/扩缩容繁琐容易出错，容器镜像和编排系统可以实现自动化管理
+- 安全性：难以限制进程权限，出错影响整机，容器有隔离但是共享内核，安全可控但是仍需额外加固
+- 日志/网络：依赖传统syslog、服务配置，容器有标准化日志输出、网络插件等机制
+
+### K8s如何实现集群的管理，简述K8s的优势、适应场景及其特点
+
+k8s采用控制平面（Control Plane）+ Worker节点的架构，使用核心组件协同完成集群管理：
+
+- 用户通过kubectl或者ci/cd工具向API server提交资源定义（如Pod，deployment）
+- scheduler决定哪个节点运行这些Pod
+- kubelet监听调度到本节点的Pod并调用容器运行时启动容器
+- controller manager保证系统状态和用户期望一致
+- 所有状态写入etcd，供系统其他组件读取
+
+k8s的优势
+
+- 弹性伸缩：支持基于资源使用的自动扩容/缩容（如HPA、VPA、cluster autoscaler）
+- 自愈能力：Pod异常自动重启、重新调度，保持高可用
+- 负载均衡与服务发现：cluster/nodeport/loadbalance机制+DNS自动解析
+- 声明式管理：所有资源使用YAML声明式配置，利于版本控制和可追溯
+- 自动部署与滚动更新：支持无停机部署、回滚等能力
+- 生态丰富：有丰富的云原生工具可以集成
+- 跨平台支持：支持公有云、私有云、本地环境部署，平台无关性强
+
+适用场景：
+
+- 微服务架构部署：服务数量多、生命周期变更频繁，k8s可以统一管理
+- devops持续交付：搭配gitops/cicd实现自动化部署
+- 混合云/多云部署：管理多个不同环境下的工作负载，保持一致性
+- 大数据/AI作业调度：可以调度GPU/TPU资源，完成批处理任务、分布式训练
+- 边缘计算场景：通过k3s、kubeEdge等适配边缘计算环境
+- 高可用、弹性伸缩要求强的业务：电商促销、视频直播等瞬时高并发业务
+
+### K8s的缺点或当前的不足之处
+
 - 学习曲线陡峭
 - 集群运维复杂：自建集群需要配置高可用的组件、证书、网络插件等，控制平面的升级、etcd的备份恢复也对经验要求高
 - 资源消耗大：控制平面组件会消耗较多资源，默认部署监控、日志、服务网格后资源占用迅速增加
 - 存储与网络配置复杂：k8s自身不提供存储与网络方案，需要借助CSI/CNI插件，网络调试困难
 - 故障排查难度大：问题可能发生在多个层级，排查复杂
+
 > 实际项目中可以通过合理选型、增强工具链（如监控日志集成）、规范权限管理等来规避不足，充分发挥其在云原生架构中的价值
 
-K8s RC的机制是什么
-- RC（ReplicationController）是K8s中最早用于控制Pod副本数量的控制器，其职责是确保指定数量的Pod副本始终运行在集群中
-- 核心机制：
-  - 通过informer注册对Pod的增删改事件进行监听（使用glist-watch机制），一旦发现变化，触发回调逻辑
-  - 周期性执行或者事件触发执行控制循环，对比期望状态和实际状态
-  - 如果需要新建副本，会使用自身`spec.template`创建新的Pod定义，并通过API server发起请求（新的Pod会带上RC的label，以便被RC管控，Pod的OwerReference会指向RC，实现级联删除）
-  - 选择器匹配：RC会使用spec.selector中定义的标签选择器来识别哪些Pod是自己管理的
-  - 一致性保障：即使Pod被删除、节点宕机、Pod崩溃等，RC都会监测到副本数量减少，并重新创建，保证副本数量稳定（体现了核心理念：期望状态驱动+最终一致性控制）
-- RC的问题在于：
-  - 不支持滚动更新：无法在不停机的情况下平滑升级应用版本
-  - 只支持v1 API：无法使用现代的扩展机制（如strategy、lifecycle hook）
-- ReplicaSet是RC的增强版本，支持复杂的selector、滚动更新等
-- Deployment是管理ReplicaSet的高级控制器，支持回滚、滚动更新
+### K8s RC的机制是什么
 
-kube-proxy的作用
-- kube-proxy是k8s中网络代理的组件，运行在每个Node节点上，负责将service请求转发到后端pod，实现service的通信和负载均衡，通过维护iptables和ipvs规则，实现高性能的四层转发，是K8s的核心组件之一
-- 主要作用：
-  - 实现service的访问代理：service提供了统一的访问入口（clusterIP、nodePort、loadBalancer），kube-proxy负责根据service的规则，将请求转发到后端的Pod上（即Endpoints）
-  - 实现负载均衡：当一个server有多个pod时，kube-proxy会根据一定的策略（如round-robin）将请求负载均衡地分发到这些pod，从而实现集群内的L4（TCP/UDP）负载均衡
-  - 维护网络转发规则：kube-proxy会监听k8s API server的service和endpoints的变更，从而动态修改本节点的iptables规则（或ipvs规则），实现服务转发
-- kube-proxy的三种模式：
-  - userspace：早期模式，用于socket转发，性能较差
-  - iptables：通过iptables规则实现转发，无需用户态干预，性能较好
-  - ipvs：基于Linux IPVS（内核级负载均衡），性能最佳
+RC（ReplicationController）是K8s中最早用于控制Pod副本数量的控制器，其职责是确保指定数量的Pod副本在集群中运行
 
-kube-proxy iptables的原理是什么
-- iptables是linux系统内核提供的用户空间命令行工具，用于配置内核的Netfilter框架，实现网络数据包的过滤（防火墙）、数据包的NAT转发、数据包的记录与丢弃，是kube-proxy的默认模式
-- kubeproxy使用iptables模式时，会监听service和endpoint的变更，自动生成一系列的NAT和转发规则，实现集群内service到后端pod的负载均衡
-  - kube-proxy监听资源变化：监听k8s的service、endpoint等资源变更，通过API server获取变更信息
-  - 动态生成iptables规则：根据监听到的资源，生成一组iptables NAT规则，写入以下几个自定义的链：
-    - KUBE-SERVICES：匹配所有服务流量入口
-    - KUBE-SVC-xxxx：每个service对应一条链
-    - KUBE-SEP-xxxx：每个pod（endpoint）对应一条链
-  - 数据包转发过程：
-    - 请求进入->PREROUTING->KUBE-SERVICES（匹配service IP）->KUBE-SVC-xxxx（跳转到对应的service链）->KUBE-SEP-xxxx（随机选择一个后端pod链）->DNAT到pod的IP:Port
-  - 负载均衡实现：KUBE-SVC-xxxx中使用`-m statistic --mode random`或`nth`模式实现随机转发，并且规则动态更新
-- 缺点：iptables是链表结构，规则较多时查找和更新效率低，可观测性和调试复杂
+核心机制：
+
+- 通过informer注册对Pod的增删改事件进行监听（使用list-watch机制），一旦发现变化，触发回调逻辑
+- 周期性或者事件触发时执行控制循环，对比期望状态和实际状态
+- 如果需要新建副本，会使用自身`spec.template`创建新的Pod定义，并通过API server发起请求（新的Pod会带上RC的label，以便被RC管控，Pod的OwerReference会指向RC，实现级联删除）
+- 选择器匹配：RC会使用spec.selector中定义的标签选择器来识别哪些Pod是自己管理的
+- 一致性保障：即使Pod被删除、所在节点宕机、Pod崩溃等，RC都会监测到副本数量减少，并重新创建，保证副本数量稳定（体现了核心理念：期望状态驱动+最终一致性控制）
+
+RC的问题在于：
+
+- 不支持滚动更新：无法在不停机的情况下平滑升级应用版本
+- 只支持v1 API：无法使用现代的扩展机制（如strategy、lifecycle hook）
+
+ReplicaSet是RC的增强版本，支持复杂的selector、滚动更新等
+Deployment是管理ReplicaSet的高级控制器，支持回滚、滚动更新
+
+## Kube-proxy
+
+### kube-proxy的作用
+
+kube-proxy是k8s中网络代理的组件，运行在每个Node节点上，负责将service请求转发到后端pod，实现service的通信和负载均衡，通过维护iptables和ipvs规则，实现高性能的四层转发，是K8s的核心组件之一
+
+主要作用：
+
+- **实现service的访问代理**：service提供了统一的访问入口（clusterIP、nodePort、loadBalancer），kube-proxy负责根据service的规则，将请求转发到后端的Pod上（即Endpoints）
+- **实现负载均衡**：当一个server有多个pod时，kube-proxy会根据一定的策略（如round-robin）将请求负载均衡地分发到这些pod，从而实现集群内的L4（TCP/UDP）负载均衡
+- **维护网络转发规则**：kube-proxy会监听k8s API server的service和endpoints的变更，从而动态修改本节点的iptables规则（或ipvs规则），实现服务转发
+
+kube-proxy的三种模式：
+
+- userspace：早期模式，用于socket转发，性能较差
+- iptables：通过iptables规则实现转发，无需用户态干预，性能较好
+- ipvs：基于Linux IPVS（内核级负载均衡），性能最佳
+
+### kube-proxy iptables的原理是什么
+
+iptables是linux系统内核提供的用户空间命令行工具，用于配置内核的Netfilter框架，实现网络数据包的过滤（防火墙）、数据包的NAT转发、数据包的记录与丢弃，是**kube-proxy的默认模式**
+
+kubeproxy使用iptables模式时，会监听service和endpoint的变更，自动生成一系列的NAT和转发规则，实现集群内service到后端pod的负载均衡
+
+- kube-proxy监听资源变化：监听k8s的service、endpoint等资源变更，通过API server获取变更信息
+- 动态生成iptables规则：根据监听到的资源，生成一组iptables NAT规则，写入以下几个自定义的链：
+  - KUBE-SERVICES：匹配所有服务流量入口
+  - KUBE-SVC-xxxx：每个service对应一条链
+  - KUBE-SEP-xxxx：每个pod（endpoint）对应一条链
+- 数据包转发过程：
+  - 请求进入->PREROUTING->KUBE-SERVICES（匹配service IP）->KUBE-SVC-xxxx（跳转到对应的service链）->KUBE-SEP-xxxx（随机选择一个后端pod链）->DNAT到pod的IP:Port
+- 负载均衡实现：KUBE-SVC-xxxx中使用`-m statistic --mode random`或`nth`模式实现随机转发，并且规则动态更新
+
+缺点：iptables是链表结构，规则较多时查找和更新效率低，可观测性和调试复杂
 > ipvs需要额外的内核模块支持（如ip_vs,ip_vs_rr等），可能有些系统默认没有加载或编译这些模块，iptables是Linux的标准组成部分，很早的内核版本就支持
 
-kube-proxy ipvs的原理是什么
-- ipvs（IP Virtual Server）是Linux内核中的四层（L4）负载均衡框架，在内核中维护连接表并基于调度算法将请求高效的转发到后端pod上
-- 工作机制：
-  - kube-proxy监听资源变化：监听service和endpoints的变化，当service或pod有更新会更新内核中的ipvs转发表
-  - 动态编写ipvs的规则：
-    - 不适用iptables，而是调用内核API（netlink）直接配置ipvs转发表
-    - 每个service（VIP+Port）会映射成一个虚拟服务（virtual service），VS是外界访问的入口
-    - 每个后端pod（endpoints）会注册成一个真实服务器（real server）挂在VS上
-  - 连接跟踪：
-    - ipvs内部维护一个连接表（Connection Table）
-    - 首次请求选定目标RS
-    - 后续请求直接从连接表中取出目标pod，无需重新调度
+### kube-proxy ipvs的原理是什么
+
+ipvs（IP Virtual Server）是Linux内核中的四层（L4）负载均衡框架，在内核中维护连接表并基于调度算法将请求高效的转发到后端pod上
+
+工作机制：
+
+- kube-proxy监听资源变化：监听service和endpoints的变化，当service或pod有更新会更新内核中的ipvs转发表
+- 动态编写ipvs的规则：
+  - 不适用iptables，而是调用内核API（netlink）直接配置ipvs转发表
+  - 每个service（VIP+Port）会映射成一个虚拟服务（virtual service），VS是外界访问的入口
+  - 每个后端pod（endpoints）会注册成一个真实服务器（real server）挂在VS上
+- 连接跟踪：
+  - ipvs内部维护一个连接表（Connection Table）
+  - 首次请求选定目标RS
+  - 后续请求直接从连接表中取出目标pod，无需重新调度
 - 支持多种负载均衡调度算法：Round Robin（轮询/默认）、Least Connection（最少连接）、Weight Round Robin（加权轮询）、Destination Hashing（基于目标地址哈希）、Source Hashing（基于源地址哈希）
 
-kube-proxy ipvs和iptables的异同点
-- kube-proxy的iptables模式通过生成Netfilter规则链来转发service流量，而ipvs模式基于内核级的IP Virtual Server框架，实现连接跟踪和高性能的四层负载均衡
-- 相同点：
-  - 都是用于service到pod的流量转发
-  - 都会监听API server的service和endpoints的变更
-  - 都由kube-proxy在每个Node节点本地运行
-  - 都使用DNAT（目标地址转换）把service ip映射到pod ip
-  - 都支持TCP、UDP，支持cluster IP、NodePort、LoadBalancer等类型
-  - 都只工作在L4层（不能做HTTP等应用层的转发）
-- 不同点：
-  - 实现方式：iptables使用Metfilter规则链和DNAT做转发，ipvs使用Linux IPVS框架，维护虚拟服务和连接表
-  - 数据结构：iptables是链表结构，规则越多越慢，ipvs是基于哈希表，查找效率高
-  - 转发机制：iptables每次匹配规则链+随机选择pod，ipvs第一次调度后进入连接表，后续直接查表
-  - 负载均衡策略：iptables是固定的轮询，ipvs支持多种调度算法
-  - 服务更新：iptanles更新全套iptables规则，规模大时较慢，ipvs仅更新差异部分，效率高
-  - 性能：iptables规则多时性能下降，ipvs性能更高，适合大集群
-  - 系统依赖：iptables是Linux默认支持，ipvs需要内核加载ip_vs模块
-  - 可观测性：iptables查看规则`iptables -L -t nat`，ipvs查看规则`ipvsadm -Ln`
+### kube-proxy ipvs和iptables的异同点
 
-K8s中什么是静态Pod
-- 静态pod是由kubelet直接管理、不经过API server创建的pod，常用于集群中关键系统组件的部署（api servevr、etcd等控制平面组件），部署配置文件是直接存储在节点的本地文件系统中（/etc/kubernetes/manifests/目录）
-- 工作原理：
-  - kubelet启动时，通过--pod-manifest-path=/etc/kubernetes/manifests 参数指定目录
-  - kubelet定期扫描这个目录
-  - 发现YAML文件则会创建对应的pod
-  - 这些pod是本地的、静态的，不会被控制平面调度
-  - 如果manifest里的文件被修改，kubelet会重启对应地pod
-- kubelet会把静态pod的信息同步给API server，生成一个只读的Mirro Pod（用于展示和查询）
-- 可以在master或者worker节点上
+kube-proxy的iptables模式通过生成Netfilter规则链来转发service流量，而ipvs模式基于内核级的IP Virtual Server框架，实现连接跟踪和高性能的四层负载均衡
 
-K8s中Pod可能处于哪些状态，pod的生命周期
-- pod在其生命周期中可能会经历以下几个状态：
-  - pending（待调度）：pod已经被创建但是还没有被调度到节点上，可能在等待调度器分配节点或者在拉取镜像
-  - running（运行中）：pod已被调度到节点上，至少有一个容器正在运行，或者正在启动或重启过程中
-  - succeeded（成功）：pod中所有容器都已成功终止，且不会重启，通常出现在job或者cronjob中
-  - failed（失败）：pod中所有容器都已终止，且至少有一个容器因失败而终止（退出码非0或被系统终止）
-  - unknow（未知）：因为某些原因无法取得pod的状态，通常是因为与pod所在节点的通信失败
-- Pod的生命周期
-  - 创建阶段：用于提交pod的定义后，api server验证并存储到etcd中，调度器选择合适的节点
-  - 调度节点：调度器根据资源需求、节点选择器、亲和性等规则将pod分配到具体节点
-  - 拉取镜像：kubelet在目标节点上拉取所需的镜像容器
-  - 容器启动：按照定义的顺序启动init容器（如果有），然后启动容器，执行postStart钩子（如果定义）
-  - 运行阶段：容器正常运行，kubelet定期执行健康检查（Liveness和Readiness探针）
-  - 终止阶段：当pod被删除，会发送SIGTERM信号给容器，执行PreStop钩子，等待优雅终止期（30s），最后发送SIGKILL强制终止
-- 容器的状态：
-  - waiting：容器未运行，可能在拉取镜像或等待
-  - running：容器正在正常运行
-  - terminated：容器已终止运行
-- 生命周期钩子：
-  - PostStart：容器启动后立即执行
-  - PreStop：容器终止前执行，用于优雅关闭
+相同点：
 
-K8s中Pod的健康检查方式
-- 探针的三种类型：
-  - LivenessProbe（存活探针）：
-    - 检查容器是否还在运行，失败kubelet会重启容器
-    - 用于可能会死锁但是进程还在，检测是否需要重启
-  - ReadinessProbe（就绪探针）：
-    - 检查容器是否准备好接收流量，失败则从service的endpoints中移除
-    - 应用需要加载配置、缓存、依赖服务等，没准备好不能接收请求
-  - StartupProbe（启动探针）：
-    - 检查容器是否已经启动完成，在此之前不执行livenessProbe
-    - 容器启动时间较长，避免被liveness误杀
-- 探针的执行方式：
-  - HTTP请求探针：向容器内某个端口发送HTTP请求，返回2xx和3xx判定成功
-  - 命令执行探针：在容器内执行命令，退出码为0则成功
-  - TCP端口探针（tcpSocket）：检查容器端口是否能被成功建立tcp连接
+- 都是用于service到pod的流量转发
+- 都会监听API server的service和endpoints的变更
+- 都由kube-proxy在每个Node节点本地运行
+- 都使用DNAT（目标地址转换）把service ip映射到pod ip
+- 都支持TCP、UDP，支持cluster IP、NodePort、LoadBalancer等类型
+- 都只工作在L4层（不能做HTTP等应用层的转发）
+
+不同点：
+
+- 实现方式：iptables使用Metfilter规则链和DNAT做转发，ipvs使用Linux IPVS框架，维护虚拟服务和连接表
+- 数据结构：iptables是链表结构，规则越多越慢，ipvs是基于哈希表，查找效率高
+- 转发机制：iptables每次匹配规则链+随机选择pod，ipvs第一次调度后进入连接表，后续直接查表
+- 负载均衡策略：iptables是固定的轮询，ipvs支持多种调度算法
+- 服务更新：iptanles更新全套iptables规则，规模大时较慢，ipvs仅更新差异部分，效率高
+- 性能：iptables规则多时性能下降，ipvs性能更高，适合大集群
+- 系统依赖：iptables是Linux默认支持，ipvs需要内核加载ip_vs模块
+- 可观测性：iptables查看规则`iptables -L -t nat`，ipvs查看规则`ipvsadm -Ln`
+
+### K8s中什么是静态Pod
+
+静态pod是由kubelet直接管理、不经过API server创建的pod，常用于集群中关键系统组件的部署（api servevr、etcd等控制平面组件），部署配置文件是直接存储在节点的本地文件系统中（/etc/kubernetes/manifests/目录）
+
+工作原理：
+
+- kubelet启动时，通过--pod-manifest-path=/etc/kubernetes/manifests 参数指定目录
+- kubelet定期扫描这个目录
+- 发现YAML文件则会创建对应的pod
+- 这些pod是本地的、静态的，不会被控制平面调度
+- 如果manifest里的文件被修改，kubelet会重启对应地pod
+
+kubelet会把静态pod的信息同步给API server，生成一个只读的**Mirro Pod**（用于展示和查询），静态Pod可以在master或者worker节点上
+
+### K8s中Pod可能处于哪些状态，pod的生命周期
+
+pod在其生命周期中可能会经历以下几个状态：
+
+- pending（待调度）：pod已经被创建但是还没有被调度到节点上，可能在等待调度器分配节点或者在拉取镜像
+- running（运行中）：pod已被调度到节点上，至少有一个容器正在运行，或者正在启动或重启过程中
+- succeeded（成功）：pod中所有容器都已成功终止，且不会重启，通常出现在job或者cronjob中
+- failed（失败）：pod中所有容器都已终止，且至少有一个容器因失败而终止（退出码非0或被系统终止）
+- unknow（未知）：因为某些原因无法取得pod的状态，通常是因为与pod所在节点的通信失败
+
+Pod的生命周期：
+
+- 创建阶段：用于提交pod的定义后，api server验证并存储到etcd中，调度器选择合适的节点
+- 调度节点：调度器根据资源需求、节点选择器、亲和性等规则将pod分配到具体节点
+- 拉取镜像：kubelet在目标节点上拉取所需的镜像容器
+- 容器启动：按照定义的顺序启动init容器（如果有），然后启动容器，执行postStart钩子（如果定义）
+- 运行阶段：容器正常运行，kubelet定期执行健康检查（Liveness和Readiness探针）
+- 终止阶段：当pod被删除，会发送SIGTERM信号给容器，执行PreStop钩子，等待优雅终止期（30s），最后发送SIGKILL强制终止
+
+容器的状态：
+
+- waiting：容器未运行，可能在拉取镜像或等待
+- running：容器正在正常运行
+- terminated：容器已终止运行
+
+生命周期钩子：
+
+- PostStart：容器启动后立即执行
+- PreStop：容器终止前执行，用于优雅关闭
+
+### K8s中Pod的健康检查方式
+
+探针的三种类型：
+
+- LivenessProbe（存活探针）：
+  - 检查容器中服务是否可用，失败kubelet会重启容器
+  - 用于可能会死锁但是进程还在，检测是否需要重启
+- ReadinessProbe（就绪探针）：
+  - 检查容器是否准备好接收流量，失败则从service的endpoints中移除
+  - 应用需要加载配置、缓存、依赖服务等，没准备好不能接收请求
+- StartupProbe（启动探针）：
+  - 检查容器是否已经启动完成，在此之前不执行livenessProbe
+  - 容器启动时间较长，避免被liveness误杀
+
+探针的执行方式：
+
+- HTTP请求探针：向容器内某个端口发送HTTP请求，返回2xx和3xx判定成功
+- 命令执行探针：在容器内执行命令，退出码为0则成功
+- TCP端口探针（tcpSocket）：检查容器端口是否能被成功建立tcp连接
+
 > 使用liveness刚启动pod就被杀，可以搭配startupProbe
 > 有服务暴露给外部，要配置readinessProbe，避免未就绪时流量进来
 > 使用exec探针注意脚本或命令要可靠，不能误判
 > HTTP探针更推荐，Liveness和Readiness都建议使用HTTP探针
+
 ```yaml
 startupProbe:
   httpGet:
@@ -264,14 +395,17 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-K8s中Pod的重启策略
-- pod的重启策略是控制容器故障恢复行为的重要机制：
-  - Always：总是重启（默认），无论容器以何种方式退出，都会重启容器
-    - 用于长期运行的服务（Web服务、API服务等），deployment、daemonSet等工作负载
-  - OnFailure：失败时重启，当容器以非0退出码退出时才会重启
-    - 批处理任务，一次性任务，job工作负载
-  - Never：无论容器以何种方式退出，都不会重启
-    - 用于一次性任务，数据迁移脚本，初始化任务
+### K8s中Pod的重启策略
+
+pod的重启策略是控制容器故障恢复行为的重要机制：
+
+- Always：总是重启（默认），无论容器以何种方式退出，都会重启容器
+  - 用于长期运行的服务（Web服务、API服务等），deployment、daemonSet等工作负载
+- OnFailure：失败时重启，当容器以非0退出码退出时才会重启
+  - 批处理任务，一次性任务，job工作负载
+- Never：无论容器以何种方式退出，都不会重启
+  - 用于一次性任务，数据迁移脚本，初始化任务
+
 > deployment/replicaset/daemonset只能使用Always，job/cronjob只能使用OnFailure或Never
 > 重启延迟机制：第一次立即重启，后面每次分别10秒、20秒、40秒最大5分钟重启
 
