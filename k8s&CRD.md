@@ -83,9 +83,6 @@ sequenceDiagram
 
 ## K8s面试题
 
-### k8s的主要组件有哪些
-
-
 ### apiserver的作用是什么
 
 apiserver是k8s的核心组件，是唯一直接与etcd直接交互的组件，主要作用是负责接收k8s的请求、鉴权、存储和通知变更信息：
