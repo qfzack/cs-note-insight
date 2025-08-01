@@ -399,132 +399,266 @@ readinessProbe:
 
 pod的重启策略是控制容器故障恢复行为的重要机制：
 
-- Always：总是重启（默认），无论容器以何种方式退出，都会重启容器
+- **Always**：总是重启（默认），无论容器以何种方式退出，都会重启容器
   - 用于长期运行的服务（Web服务、API服务等），deployment、daemonSet等工作负载
-- OnFailure：失败时重启，当容器以非0退出码退出时才会重启
+- **OnFailure**：失败时重启，当容器以非0退出码退出时才会重启
   - 批处理任务，一次性任务，job工作负载
-- Never：无论容器以何种方式退出，都不会重启
+- **Never**：无论容器以何种方式退出，都不会重启
   - 用于一次性任务，数据迁移脚本，初始化任务
 
 > deployment/replicaset/daemonset只能使用Always，job/cronjob只能使用OnFailure或Never
 > 重启延迟机制：第一次立即重启，后面每次分别10秒、20秒、40秒最大5分钟重启
 
-K8s Pod常见的调度方式
-- 默认调度
-  - k8s调度器 (scheduler) 会根据Pod的资源需求、节点资源可用性、以及预定义的调度策略（如Taints和Tolerations、Node Affinity等）自动将Pod调度到合适的节点上
-- 手动调度（Node Selector）
-  - 通过在pod spec中指定节点名称，可以强制调度到指定的节点
-  - 通过在pod的YAML文件中指定`nodeSelector` 字段，可以指定Pod必须运行在具有特定标签的节点上
-- 亲和性调度（Affinity/Anti-Affinity）
-  - Node Affinity： 类似于`nodeSelector`，但提供了更灵活的匹配规则，可以使用`requiredDuringSchedulingIgnoredDuringExecution`（硬性要求）和 `preferredDuringSchedulingIgnoredDuringExecution`（软性要求）
-  - Pod Affinity/Anti-Affinity： 可以基于Pod之间的关系进行调度，例如，将两个Pod调度到同一个节点上（亲和性），或者避免将两个Pod调度到同一个节点上（反亲和性）
-- 污点与容忍（Taints&Tolerations）
-  - 节点设置了污点（Taints），表示默认拒绝调度pod上来，除非pod设置了对应的Toleration才能调度上来
-- 优先级与抢占调度（Preemption）
-  - 设置`priorityClassName`(使用自定义的`PriorityClass`资源)，当高优先级pod没有资源时，可能抢占低优先级pod所在的节点资源，用于保留核心服务
-- 拓扑分布调度
-  - 使用`TopologySpreadConstraints`控制不同拓扑域（如可用区、节点）间的分布，防止节点/区域宕机导致误服不可用
-- 自定义调度器
-  - 使用`schedulerName`指定自定义的调度器，实现自定义调度逻辑
+### K8s Pod常见的调度方式
 
-K8s的初始化容器是什么（init container）
-- Init容器是在Pod启动之前运行的特殊容器，它们可以包含一些实用工具或脚本，用于在主容器启动之前执行一些初始化任务，例如：设置网络、下载文件、生成配置文件、等待其他服务启动
-- 一个Pod可以包含多个Init容器，它们会按照定义的顺序依次执行，只有当所有的Init容器都执行成功后，Pod的主容器才会启动
+默认调度
 
-K8s deployment升级的过程和升级策略是什么
-- 升级过程
-  1. 更新Deployment的YAML配置，修改镜像版本或其他配置
-  2. 执行`kubectl apply -f <deployment.yaml>`命令，将更新后的配置应用到集群中
-  3. Deployment Controller会创建一个新的ReplicaSet，并逐渐将流量从旧的ReplicaSet转移到新的ReplicaSet，并逐步减少旧版本pod的数量
-- 升级策略（.spec.strategy）
-  - 滚动更新（RollingUpdate）：默认策略，逐步替换旧的Pod，实现平滑升级，减少停机时间,可以通过`maxSurge`(最多允许超出期望副本数)和`maxUnavailable`（最多允许不可用的数量）参数控制升级的速度和可用性
-  - 重建（Recreate）： 在创建新的Pod之前，先删除所有旧的Pod，会导致短暂的停机时间，适合无状态服务、开发环境、数据库迁移等
+- k8s调度器 (scheduler) 会根据Pod的资源需求、节点资源可用性、以及预定义的调度策略（如Taints和Tolerations、Node Affinity等）自动将Pod调度到合适的节点上
+
+手动调度（Node Selector）
+
+- 通过在pod spec中指定节点名称，可以强制调度到指定的节点
+- 通过在pod的YAML文件中指定`nodeSelector` 字段，可以指定Pod必须运行在具有特定标签的节点上
+
+亲和性调度（Affinity/Anti-Affinity）
+
+- Node Affinity： 类似于`nodeSelector`，但提供了更灵活的匹配规则，可以使用`requiredDuringSchedulingIgnoredDuringExecution`（硬性要求）和 `preferredDuringSchedulingIgnoredDuringExecution`（软性要求）
+- Pod Affinity/Anti-Affinity： 可以基于Pod之间的关系进行调度，例如，将两个Pod调度到同一个节点上（亲和性），或者避免将两个Pod调度到同一个节点上（反亲和性）
+
+污点与容忍（Taints&Tolerations）
+
+- 节点设置了污点（Taints），表示默认拒绝调度pod上来，除非pod设置了对应的Toleration才能调度上来
+
+优先级与抢占调度（Preemption）
+
+- 设置`priorityClassName`(使用自定义的`PriorityClass`资源)，当高优先级pod没有资源时，可能抢占低优先级pod所在的节点资源，用于保留核心服务
+
+拓扑分布调度
+
+- 使用`TopologySpreadConstraints`控制不同拓扑域（如可用区、节点）间的分布，防止节点/区域宕机导致误服不可用
+
+自定义调度器
+
+- 使用`schedulerName`指定自定义的调度器，实现自定义调度逻辑
+
+### K8s的初始化容器是什么（init container）
+
+Init容器是在Pod初始化阶段（调度到节点后）运行的特殊容器，它们可以包含一些实用工具或脚本，用于在主容器启动之前执行一些初始化任务，例如：**设置网络**、**下载文件**、**生成配置文件**、**等待其他服务启动**
+
+一个Pod可以包含多个Init容器，它们会按照定义的顺序依次执行，只有当所有的Init容器都执行成功后，Pod的主容器才会启动
+
+### K8s deployment升级的过程和升级策略是什么
+
+升级过程
+
+1. 更新Deployment的YAML配置，修改镜像版本或其他配置
+2. 执行`kubectl apply -f <deployment.yaml>`命令，将更新后的配置应用到集群中
+3. Deployment Controller会创建一个新的ReplicaSet，并逐渐将流量从旧的ReplicaSet转移到新的ReplicaSet，并逐步减少旧版本pod的数量
+
+升级策略（.spec.strategy）
+
+- **滚动更新（RollingUpdate）**：默认策略，逐步替换旧的Pod，实现平滑升级，减少停机时间,可以通过`maxSurge`(最多允许超出期望副本数)和`maxUnavailable`（最多允许不可用的数量）参数控制升级的速度和可用性
+- **重建（Recreate）**： 在创建新的Pod之前，先删除所有旧的Pod，会导致短暂的停机时间，适合无状态服务、开发环境、数据库迁移等
+
 > 可以使用`kubectl rollout undo deployment <name>`回滚到上一版本，deployment会自动记录历史版本（默认10条）
 
-DaemonSet类型的资源特性是什么
-- DaemonSet确保在每个（或某些）节点上运行一个Pod的副本：
-  - 每个节点运行一个副本：当有新节点加入集群时，DaemonSet会自动在该节点上部署一个Pod副本
-  - 节点选择器：可以通过`nodeSelector`、`nodeAffinity`或`Taint/Toleration`限制DaemonSet Pod运行的节点范围
-  - 适用于系统级应用：常用于部署集群级别的守护进程，例如日志收集器（Fluentd）、监控代理（Prometheus Node Exporter）等
-  - 升级策略（.spec.updateStrategy）支持RollingUpdate（默认）和OnDelete（删除pod才创建新的）
+### DaemonSet类型的资源特性是什么
+
+DaemonSet确保在每个（或某些）节点上运行一个Pod的副本：
+
+- 每个节点运行一个副本：当有新节点加入集群时，DaemonSet会自动在该节点上部署一个Pod副本
+- 节点选择器：可以通过`nodeSelector`、`nodeAffinity`或`Taint/Toleration`限制DaemonSet Pod运行的节点范围
+- 适用于系统级应用：常用于部署集群级别的守护进程，例如日志收集器（Fluentd）、监控代理（Prometheus Node Exporter）等
+- 升级策略（.spec.updateStrategy）支持RollingUpdate（默认）和OnDelete（删除pod才创建新的）
+
 > master默认带有污点防止普通的pod调度上去占用控制平面的资源，保障调度、管理组件运行稳定，可以设置toleration来容忍这个污点
 
-K8s的自动扩容机制是什么
-- Horizontal Pod Autoscaler(HPA)
-  - 根据Pod的CPU利用率或其他指标自动调整Pod的副本数量
-  - 适用于deployment、replicaset、statefulset等，需要安装`Metrics Server`
-- Vertical Pod Autoscaler(VPA)
-  - 自动调整Pod的资源请求（CPU 和内存），以优化资源利用率
-  - 对于副本数量固定的服务（如数据库）比较有用，默认会重启pod来更新资源，需要安装VPA组件
-- Cluster Autoscaler(CA)
-  - 自动调整集群中节点的数量，以满足Pod的资源需求
-  - 比如有pod无法调度时，自动扩容节点，节点资源长期空闲，自动缩容节点，一般用在云平台
+### K8s的自动扩容机制是什么
 
-Service类型是什么
-- Service是Kubernetes中用于暴露应用程序的抽象概念吗，它通过标签选择器（LabelSelector）关联后端的一组Pod，并提供了一个稳定的IP地址和DNS名称，使得客户端可以通过Service访问Pod，主要解决：
-  - 服务发现：为动态变化的pod提供稳定的访问入口
-  - 负载均衡：在多个pod副本之间分发流量，由kube-proxy负责
-  - 网络抽象：屏蔽底层pod的IP变化，提供不变的服务端点
-- service的类型（.spec.type）：
-  - ClusterIP：默认类型，在集群内部创建一个虚拟IP地址，只能在集群内部访问，用于集群内服务通信
-  - NodePort：在每个节点上打开一个端口，外部可以通过`NodeIP:NodePort`访问Service，也会创建clusterIP，适用于开发环境
-  - LoadBalancer：使用云提供商的负载均衡器将Service暴露给外部，自动配置外部IP，同时会创建clusterIP和NodePort，通常用于公有云环境
-  - ExternalName：将Service映射到一个外部DNS名称，用于在集群内访问集群外部的服务
-  - 特殊类型Headless：使用`clusterIP: None`，不分配clusterIP，DNS查询直接返回Pod IP，用于statefulSet等有状态的应用
+**Horizontal Pod Autoscaler(HPA)**
 
-service分发到后端的策略是什么
-- kube-proxy负责将Service的请求转发到后端的Pod，分发策略有：
-  - iptables的策略是随机分发
-  - ipvs的策略有rr（轮询）、lc（最少连接）、dh（目标哈希）、sh（源哈希，可实现会话粘性）等
-  - Session Affinity：基于客户端IP地址的会话保持，确保来自同一个客户端的请求始终被转发到同一个Pod
+- 根据Pod的CPU利用率或其他指标自动调整Pod的副本数量
+- 适用于deployment、replicaset、statefulset等，需要安装`Metrics Server`
 
-外部如何访问集群内的服务
-- NodePort：通过`NodeIP:NodePort`开启，可以让每个节点开放一个指定范围（30000-32767）的端口
-- LoadBalancer：通过云提供商的负载均衡器提供的IP地址或域名访问
-- Ingress：通过Ingress Controller（如Nginx、Traefik、Istio）提供的域名或URL路径访问，基于HTTP/HTTPS七层协议，支持域名路由、TLS、重定向等高级功能
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+```
 
-ingress是什么
-- Ingress是Kubernetes中用于管理外部访问集群内服务的API对象，允许将外部请求路由到集群内部的不同Service，提供HTTP/HTTPS路由规则，是七层（应用层）负载均衡解决方案
-- ingress的作用：
-  - 统一入口：为多个service提供统一的外部访问入口
-  - 域名和路径路由：可以根据域名和URL路径将请求路由到不同的Service
-  - SSL/TLS termination：集中处理HTTPS证书和SSL终结
-  - 成本优化：避免为每个服务创建LoadBalancer类型的Service
-- ingress组件架构：
-  - ingress资源对象：即定义路由规则的YAML配置
-  - ingress controller：执行路由规则的控制器，与`IngressClass`资源配合使用
+**Vertical Pod Autoscaler(VPA)**
 
-K8s的镜像下载策略是什么，image的状态有哪些
-- 镜像拉取策略（imagePullPolicy）
-  - Always：每次都尝试拉取镜像
-  - IfNotPresent：如果本地不存在镜像，则拉取
-  - Never：从不拉取镜像，只使用本地镜像
-- 镜像状态
-  - pending：待处理
-  - ImagePullBackOff：镜像拉取失败回退
-  - ErrImagePull：镜像拉取错误
-- 容器状态相关
-  - imageInspectError：镜像检查错误
-  - imagePullSecretError：镜像拉取密钥错误
+- 自动调整Pod的资源请求（CPU 和内存），以优化资源利用率
+- 对于副本数量固定的服务（如数据库）比较有用，默认会重启pod来更新资源，需要安装VPA组件
 
-负载均衡器是什么
-- 负载均衡器是一种网络设备或软件，用于将客户端请求分发到多个服务器上，以提高系统的可用性和性能
-- 核心作用：
-  - 流量分发：避免单一服务器过载，提高系统整体处理能力
-  - 高可用性：自动检测健康状态、实现故障转移
-  - 性能优化：提高并发能力，优化资源利用率
-- 按照网络层级分类
-  - 四层负载均衡（L4）：基于TCP/UDP协议进行转发，例如kube-proxy的IPVS模式
-  - 七层负载均衡（L7）：基于HTTP/HTTPS协议进行转发，可以根据URL、Header等信息进行路由，例如Ingress Controller
+```yaml
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: nginx-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx
+  updatePolicy:
+    updateMode: "Off"  # 只生成推荐，不实际修改Pod，**Auto**会自动更新Pod
+```
 
-K8s各模块如何与API server通信
-- Kubernetes的各个组件（例如kubelet、kube-proxy、scheduler、controller-manager）都会与API Server进行通信
-- API server的作用：
-  - 统一接口：提供RESTful API接口
-  - 认证授权：验证客户端身份和权限
-  - 数据验证：验证API对象的格式和内容
-  - 数据持久化：与etcd交互存储集群状态
-  - 事件通知：通过watch机制推送资源变更
+Cluster Autoscaler(CA)
+
+- 自动调整集群中节点的数量，以满足Pod的资源需求
+- 比如有pod无法调度时，自动扩容节点，节点资源长期空闲，自动缩容节点，一般用在云平台
+
+### Service类型是什么
+
+Service是Kubernetes中用于暴露应用程序的抽象概念吗，它通过标签选择器（LabelSelector）关联后端的一组Pod，并提供了一个稳定的IP地址和DNS名称，使得客户端可以通过Service访问Pod，主要解决：
+
+- 负载均衡：在多个pod副本之间分发流量，由kube-proxy负责
+- 服务发现：为动态变化的pod提供稳定的访问入口
+- 网络抽象：屏蔽底层pod的IP变化，提供不变的服务端点
+
+service的类型（.spec.type）：
+
+- **ClusterIP**：默认类型，在集群内部创建一个虚拟IP地址，只能在集群内部访问，用于集群内服务通信
+- **NodePort**：在每个节点上打开一个端口，外部可以通过`NodeIP:NodePort`访问Service，同时也会创建clusterIP，适用于开发环境
+- **LoadBalancer**：使用云提供商的负载均衡器将Service暴露给外部，自动配置外部IP，同时会创建clusterIP和NodePort，通常用于公有云环境
+- **ExternalName**：将Service映射到一个外部DNS名称，用于在集群内访问集群外部的服务
+- 特殊类型**Headless**：使用`clusterIP: None`，不分配clusterIP，DNS查询直接返回Pod IP，每个Pod会有一个固定的DNS名称，用于statefulSet等有状态的应用
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: ClusterIP      # 默认类型，可省略
+  selector:
+    app: my-app
+  ports:
+    - protocol: TCP
+      port: 80          # Service 端口
+      targetPort: 8080  # Pod 容器端口
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-headless-svc
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 80
+```
+
+### service分发到后端的策略是什么
+
+kube-proxy负责将Service的请求转发到后端的Pod，分发策略有：
+
+- iptables的策略是随机分发
+- ipvs的策略有rr（轮询）、lc（最少连接）、dh（目标哈希）、sh（源哈希，可实现会话粘性）等
+- Session Affinity：基于客户端IP地址的会话保持，确保来自同一个客户端的请求始终被转发到同一个Pod
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 8080
+  sessionAffinity: ClientIP    # 开启基于客户端IP的会话亲和
+```
+
+### 外部如何访问集群内的服务
+
+- **NodePort**：通过`NodeIP:NodePort`开启，可以让每个节点开放一个指定范围（30000-32767）的端口
+- **LoadBalancer**：通过云提供商的负载均衡器提供的IP地址或域名访问
+- **Ingress**：通过Ingress Controller（如Nginx、Traefik、Istio）提供的域名或URL路径访问，基于HTTP/HTTPS七层协议，支持域名路由、TLS、重定向等高级功能
+
+### ingress是什么
+
+Ingress是Kubernetes中用于管理外部访问集群内服务的资源对象，允许将外部请求路由到集群内部的不同Service，提供HTTP/HTTPS路由规则，是七层（应用层）负载均衡解决方案
+
+ingress的作用：
+
+- 统一入口：为多个service提供统一的外部访问入口
+- 域名和路径路由：可以根据域名和URL路径将请求路由到不同的Service
+- SSL/TLS termination：集中处理HTTPS证书和SSL终结
+- 成本优化：避免为每个服务创建LoadBalancer类型的Service
+
+ingress组件架构：
+
+- ingress资源对象：即定义路由规则的YAML配置
+- ingress controller：执行路由规则的控制器，与`IngressClass`资源配合使用
+
+### K8s的镜像下载策略是什么，image的状态有哪些
+
+镜像拉取策略（imagePullPolicy）
+
+- Always：每次都尝试拉取镜像
+- IfNotPresent：如果本地不存在镜像，则拉取
+- Never：从不拉取镜像，只使用本地镜像
+
+镜像状态
+
+- pending：待处理
+- ImagePullBackOff：镜像拉取失败回退
+- ErrImagePull：镜像拉取错误
+
+容器状态相关
+
+- imageInspectError：镜像检查错误
+- imagePullSecretError：镜像拉取密钥错误
+
+### 负载均衡器是什么
+
+负载均衡器是一种网络设备或软件，用于将客户端请求分发到多个服务器上，以提高系统的可用性和性能
+
+核心作用：
+
+- 流量分发：避免单一服务器过载，提高系统整体处理能力
+- 高可用性：自动检测健康状态、实现故障转移
+- 性能优化：提高并发能力，优化资源利用率
+
+按照网络层级分类
+
+- 四层负载均衡（L4）：基于TCP/UDP协议进行转发，例如kube-proxy的IPVS模式
+- 七层负载均衡（L7）：基于HTTP/HTTPS协议进行转发，可以根据URL、Header等信息进行路由，例如Ingress Controller
+
+### K8s各模块如何与API server通信
+
+Kubernetes的各个组件（例如kubelet、kube-proxy、scheduler、controller-manager）都会与API Server进行通信
+
+API server的作用：
+
+- 统一接口：提供RESTful API接口
+- 认证授权：验证客户端身份和权限
+- 数据验证：验证API对象的格式和内容
+- 数据持久化：与etcd交互存储集群状态
+- 事件通知：通过watch机制推送资源变更
+
 - kubelet：
   - 主动向API server拉取信息，并定期上报状态
   - 监听自己所在节点的pod资源（watch pod），上报pod状态（心跳、资源使用等），创建或删除容器后上报容器状态
@@ -551,17 +685,21 @@ K8s各模块如何与API server通信
     - Ingress Controller watch ingress资源，根据规则配置负载均衡
     - 网络/存储插件可能通过kubelet调用API server，间接同步信息
 
-scheduler的作用及实现原理
-- 核心职责：
-  - 监听所有pending状态的pod
-  - 根据设定的调度策略和集群当前的状态，选择一个最合适的节点
-  - 将调度结果写回API server，更新Pod.spec.nodeName字段
-- 详细流程：
-  1. watch未调度的pod：监听API server，获取所有处于pending且`spec.nodeName=="`的pod
-  2. 调度策略：
-     - filtering（预选阶段）：筛选出可运行的pod节点集合，过滤掉资源不足、不满足调度条件的节点（NodeReady、Taint/Toleration等）
-     - scoring（优选阶段）：通过筛选的节点打分排序，选择分数最高的那个节点，打分标准包括节点的负载均衡程度、节点的亲和/反亲和权重、自定义调度策略
-  3. 绑定pod到节点：将决策结果通过Bind API提交到API server，设置Pod.spec.nodeName的值（会被kubelet watch并执行创建操作）
+### scheduler的作用及实现原理
+
+核心职责：
+
+- 监听所有pending状态的pod
+- 根据设定的调度策略和集群当前的状态，选择一个最合适的节点
+- 将调度结果写回API server，更新Pod.spec.nodeName字段
+
+详细流程：
+
+1. watch未调度的pod：监听API server，获取所有处于pending且`spec.nodeName=="`的pod
+2. 调度策略：
+   - filtering（预选阶段）：筛选出可运行的pod节点集合，过滤掉资源不足、不满足调度条件的节点（NodeReady、Taint/Toleration等）
+   - scoring（优选阶段）：通过筛选的节点打分排序，选择分数最高的那个节点，打分标准包括节点的负载均衡程度、节点的亲和/反亲和权重、自定义调度策略
+3. 绑定pod到节点：将决策结果通过Bind API提交到API server，设置Pod.spec.nodeName的值（会被kubelet watch并执行创建操作）
 
 kubelet的作用
 - kubelet是运行在每个node上的agent，负责根据podspec和容器运行时（如containerd）交互，确保pod被正确创建、运行和维护其生命周期
