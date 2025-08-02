@@ -109,6 +109,100 @@ k8s的优势
 
 > 实际项目中可以通过合理选型、增强工具链（如监控日志集成）、规范权限管理等来规避不足，充分发挥其在云原生架构中的价值
 
+### K8s的资源类型有哪些
+
+K8s原生支持的资源类型，即Kind字段中可以直接使用的有：
+
+- 工作负载类
+  - Pod
+  - Deployment
+  - Replicaset
+  - StatefulSet
+  - DaemonSet
+  - Job
+  - Cronjob
+- 服务发现与负载均衡
+  - Service
+  - Ingress
+  - EndpointSlice
+  - Endpoint
+- 配置与存储
+  - ConfigMap
+  - Secret
+  - PersistentVolume (PV)
+  - PersistentVolumeClaim (PVC)
+  - StorageClass
+- 集群资源
+  - Namespace
+  - Node
+  - APIServer：用于将集群扩展API注册到主API Server
+- 元数据
+  - Event
+  - LimitRange
+  - ResourceQuota
+  - HorizontalPodAutoscaler
+  - PodTemplate
+  - Lease
+- 访问控制
+  - ServiceAccount
+  - Role
+  - ClusterRole
+  - RoleBinding
+  - ClusterRoleBinding
+- 扩展机制
+  - CustomResourceDefinition (CRD)：实现自定义的资源类型
+
+### API Server的作用是什么
+
+apiserver是k8s的核心组件，是唯一直接与etcd直接交互的组件，主要作用是负责接收k8s的请求、鉴权、存储和通知变更信息：
+
+- 统一入口：所有的组件（kubectl、controller、scheduler、kubelet、operator）都是通过apiserver来读写资源对象，apiserver是k8s的REST API服务器
+- 鉴权与认证：对接入的请求进行认证、授权、准入控制
+- 数据库存储代理：apiserver不直接存储数据，而是作为代理把对象存入etcd，并实现对etcd的封装
+- watch通知：对外提供资源变化的watch流，供controller、client-go、kubectl watch等订阅，通知变更事件
+- 数据校验和默认值填充：在资源创建时会自动补全默认值和进行字段合法性校验
+
+### API Server的架构
+
+- 认证（Authentication）：支持Token、Client Certificate、Webhook、OIDC等，返回UserInfo，供后续鉴权使用
+- 鉴权（Authorization）：判断用户是否有权限操作资源，支持RBAC、ABAC、Webhook、Node角色等
+- 准入控制器（Admission Controller）：在资源写入etcd之前进行检查（拒绝、修改、审计），控制插件有namespaceLifecycle、LimitRanger、PodSecurity、MutatingAdmissionWebhook
+- 请求处理：
+  - HTTP服务器（REST API handler）：支持K8s资源的标准REST接口
+  - 路由和版本管理：管理不同资源组（core、apps、batch）和版本（v1、v1beta1），路由到对应的资源处理器
+  - 序列化和反序列化：使用protobuf或json编解码请求体与etcd存储体
+  - 存储接口：所有资源都转换为键值对写入etcd
+  - 聚合层（API Aggregation Layer）：支持通过注册APIServer资源把外部API接入K8s API路径，比如Metrics server、Custom API Server
+
+### API Server如何保证与其他组件的消息的及时同步
+
+一般来说实现消息同步有两种方式：1.客户端轮询获取最新的状态，2.apiserver通知客户端
+list-watch机制可以较低apiserver的请求压力，其本质就是客户端监听k8s资源的变化并执行相应的处理逻辑（生产者消费者），并且需要满足：
+
+- 实时性：当资源变更，相关的组件要尽快感知
+- 消息的顺序性：消息要按照先后发生的顺序被发送
+- 保证信息不丢失或者可靠的重新获取机制
+
+list-watch机制是k8s中各个组件从apiserver获取资源状态并持续监听变化的标准模式，其中list是通过apiserver获取全部资源，watch是基于list返回结果中资源的resourceVersion请求apiserver并启动持续监听（基于http长连接）
+
+informer是client-go的一个组件，实现了对list-watch的封装用于自动管理资源的监听、缓存和事件分发：
+
+- 初始化阶段：使用list获取所有资源并填充缓存
+- 持续监听：通过watch监听后续变化
+- 缓存更新：将watch到的事件同步到本地缓存
+- 事件分发：触发注册的事件处理方法
+
+### client-go是什么
+
+client-go是k8s官方提供的go语言SDK，用于与k8s apiserver通信的客户端库，是开发k8s应用的标准工具包
+
+client-go提供了完整的k8s交互能力：
+- clientset：访问所有k8s资源的客户端集合
+- informer：监听资源变化的高级封装
+- workqueue：处理事件的工作队列
+- restclient：底层http客户端
+- discovery client：发现api资源信息
+
 ### K8s各模块如何与API server通信
 
 Kubernetes的各个组件（例如kubelet、kube-proxy、scheduler、controller-manager）都会与API Server进行通信
@@ -254,7 +348,7 @@ PSP的机制：
 
 ### PodSecurity Admission是什么
 
-PodSecurity Admission是1.23引入，并在1.25取代PodSecurityPolicy的内建安全控制机制，用于控制命名空间中Pod的安全性配置的合规性，例如：
+PodSecurity Admission是1.23引入，并在1.25取代PodSecurityPolicy的内建安全控制机制，PSA是运行在API server内的准入控制器，用于控制命名空间中Pod的安全性配置的合规性，例如：
 
 - 是否允许特权容器
 - 是否允许hostNetwork、hostPID等
@@ -306,6 +400,14 @@ spec:
 ```shell
 Error from server: pods "nginx-privileged" is forbidden: violates PodSecurity "restricted:latest": privileged container is not allowed
 ```
+
+### Namespace是什么
+
+Namespace是K8s的资源隔离机制，允许将集群资源划分为多个虚拟子集，主要作用是：
+
+- 资源隔离：把不同环境（开发、生产、测试）或者不同团队的资源分开管理
+- 权限管理：可以基于namespace配置RABC权限策略，控制namespace内的权限控制
+- 限制资源：配合ResourceQuota使用，可以限制namespace使用的CPU、内存等资源
 
 ### RBAC是什么，有什么特点和优势
 
@@ -411,11 +513,13 @@ imagePullSecrets:
 - 支持有状态服务：数据库、分拣服务、分布式缓存等
 - 支持弹性伸缩场景：多个副本访问同一个数据目录，无需每个副本独立维护存储
 
-### 数据持久化的方式有哪些
+### 持久化存储的方式有哪些
 
-- PV和PVC：k8s提供的标准持久化机制，跨云平台、支持共享和独享存储
+- **PV和PVC**：k8s提供的标准持久化机制，跨云平台、支持共享和独享存储
+- **EmptyDir**：Pod创建时在宿主机临时创建的目录，生命周期与Pod绑定，只在Pod容器之间共享
+- **HostPath**：HostPath挂载宿主机目录，可以直接访问宿主机文件，Pod之间可以共享，Pod删除数据可以保留，但是数据与节点绑定，迁移困难
+
 - 使用共享存储系统：如NFS、CephFS、AWS EFS等，支持多个Pod同时挂载使用，实现数据共享，支持跨节点共享、数据集中管理，适用于日志收集、Web内容共享、任务协同等
-- 使用本地存储：HostPath挂载宿主机目录，高性能，适用于数据库等对IOPS要求高的应用，但是数据与节点绑定，迁移困难
 - 使用云存储对象：将数据写入云存储，如AWS S3、阿里云OSS、MinIO等，常用于备份、镜像存储、大文件或静态文件存储，容量弹性大，适合非结构化数据
 - 使用statefulset+PVC：statefulset可以使用volumeClaimTemplates为每个pod创建独立的PVC，适用于有状态的服务
 
@@ -747,7 +851,33 @@ etcd的性能问题通常体现在延迟高、写入慢、集群不稳定，排�
 
 ## Pod
 
-### K8s中什么是静态Pod
+### Pod是什么
+
+微服务架构中出于单一职责的考虑，一个容器只运行一个进程，为了将多个容器绑定到一起并将它们作为一个整体进行管理，K8s引入了Pod这一更高级的资源对象，一个Pod中的容器可以共享资源并协同工作，但是不能跨多个节点运行，Pod的主要特点是：
+
+- 每个Pod会分配唯一的IP地址，像独立的机器一样运行
+- Pod是K8s最小的部署单元
+- Pod可以包含一个或多个容器，通常一个容器运行一个进程
+- 一个Pod只能运行在单个节点上
+- 每个Pod有一个根容器（pause容器）负责管理其他业务容器
+- Pod中的容器共享网络命名空间和IP，因此可能出现端口冲突
+
+### K8s的Pause容器是什么
+
+Pause容器是一个基础容器，是每个Pod中默认启动的第一个容器，其主要作用是：
+
+- **作为共享网络栈的主容器**：每个Pod中所有容器共享一个网络命名空间（Network Namespace），Pause容器会持有这个网络命名空间，后续启动的容器都会加入这个网络命名空间，从而实现容器的网络共享
+- **作为容器生命周期的锚点**：Pause容器一旦创建，其PID就称为整个Pod生命周期的基础，如果Pause容器挂了，Pod就必须被重建
+
+其实主要工作就是创建一个空进程，常驻不退出（比如执行pause或者sleep infinity），保持网络空间不被销毁
+
+### K8s的初始化容器是什么（init container）
+
+Init容器是在Pod初始化阶段（调度到节点后）运行的特殊容器，它们可以包含一些实用工具或脚本，用于在主容器启动之前执行一些初始化任务，例如：**设置网络**、**下载文件**、**生成配置文件**、**等待其他服务启动**
+
+一个Pod可以包含多个Init容器，它们会按照定义的顺序依次执行，只有当所有的Init容器都执行成功后，Pod的主容器才会启动
+
+### K8s中的是静态Pod是什么
 
 静态pod是由kubelet直接管理、不经过API server创建的pod，常用于集群中关键系统组件的部署（api servevr、etcd等控制平面组件），部署配置文件是直接存储在节点的本地文件系统中（/etc/kubernetes/manifests/目录）
 
@@ -887,12 +1017,6 @@ pod的重启策略是控制容器故障恢复行为的重要机制：
   - Pod声明可以使用的最大资源量（CPU和内存）Kubelet会限制Pod使用的资源量，防止Pod占用过多资源
   - 如果容器使用的资源超过了limits：pod超过CPU limit不会被杀死，但是会被限制CPU的使用，如果超过Memory limit，pod会被杀掉（出现OOMKilled状态）
 
-### K8s的初始化容器是什么（init container）
-
-Init容器是在Pod初始化阶段（调度到节点后）运行的特殊容器，它们可以包含一些实用工具或脚本，用于在主容器启动之前执行一些初始化任务，例如：**设置网络**、**下载文件**、**生成配置文件**、**等待其他服务启动**
-
-一个Pod可以包含多个Init容器，它们会按照定义的顺序依次执行，只有当所有的Init容器都执行成功后，Pod的主容器才会启动
-
 ### K8s的镜像下载策略是什么，image的状态有哪些
 
 镜像拉取策略（imagePullPolicy）
@@ -912,7 +1036,56 @@ Init容器是在Pod初始化阶段（调度到节点后）运行的特殊容器�
 - imageInspectError：镜像检查错误
 - imagePullSecretError：镜像拉取密钥错误
 
-## Deployment/DaemonSet/ReplicaSet
+### Pod的创建过程
+
+K8s的pod是最小的调度单元，其中通常运行一个或者多个容器
+Pod的创建过程：
+1. 用户提交请求（kubectl或者api），请求包含pod中容器的镜像、资源限制、环境变量、存储卷、端口等pod配置
+2. apiserver接收到用户的请求后，先进行权限鉴定确保用户有权限创建pod，然后验证配置的正确性并补全默认的配置，最后将pod配置保存到etcd中，状态为pending
+3. scheduler通过list-watch监控到未调度的pod（spec.nodeName为空），然后根据调度算法选择合适的node来运行pod,更新spec.nodeName后将pod信息写回apiserver，主要考虑的因素有：
+   - 请求资源：pod请求的CPU和memory
+   - node资源：node当前的负载和可用资源
+   - 亲和性/反亲和性：pod对节点的亲和性和反亲和性规则
+   - 污点和容忍度：node是否有污点以及pod能否容忍污点
+4. kubelet启动容器：
+   - 调度到指定node上后，node上的kubelet通过watch机制监听到分配的pod，从apiserver获取pod配置
+   - kubelet调用CNI插件（如calico）为pod分配IP地址并配置网络，根据pod定义来挂载所需的存储卷，创建Pause容器实现pod内网络和存储的共享
+   - 拉取容器镜像并启动容器（如果有init容器先启动init容器）
+5. 健康检查：通过就绪性探针（readiness probe）检查容器是否准备好接收流量，通过存活性探针（liveness probe）监控容器健康状态，根据探针结果更新pod状态
+6. 状态更新：整个过程kubelet持续向apiserver汇报pod状态：
+  - pending：pod已经调度但是尚未创建
+  - containerCreating：正在拉取镜像和创建容器
+  - running：所有容器都已成功启动
+  - ready：pod通过了就绪性检查，可以接收流量
+7. 服务发现和负载均衡：
+   - kubeproxy更新iptables或IPVS规则
+   - DNS记录会被更新以包含新的pod ip
+   - pod成为server负载均衡的后端endpoint
+
+如果是创建deployment来创建pod，因为deplyment是更高级的抽象，因此会有些不同：
+- 单个pod创建没有controller参与，创建deploment时deployment controller会参与调度
+- 创建deployment会间接创建replicaset，然后replicaset再创建pod，所以与apiserver的交互次数增多
+
+### Pod的销毁过程
+
+1. 用户通过kubectl或者api发起删除请求
+2. apiserver接收到删除请求，验证用户权限和请求合法性，将etcd中pod对象标记为删除状态，设置deletionTimestamp字段，如果pod有finalizers，会等待这些finalizers被清理
+3. kubelet监听到删除删除事件，向pod中每个容器发送sigterm信号，开始计算优雅终止时间（默认30s）
+4. 容器中的应用程序捕获sigterm信号并开始优雅关闭，完成正在处理的请求，关闭数据库连接、文件句柄等资源，清理临时文件和缓存
+5. kubeproxy更新iptables规则，将pod从service的endpoint中移除，新的流量不再路由到该pod
+6. 如果优雅终止容器没有自主退出，kubelet发送sigkill信号强制终止容器进程
+7. CRI（如containerd）清理容器资源，删除容器系统文件，释放网络资源
+8. kubelet卸载pod的存储卷，清理网络配置（如ip地址分配）
+9. kubelet向apiserver报告pod已终止，apiserver从etcd删除pod对象记录
+
+### 哪些情况pod删除会被卡住
+
+1. 如果finalizers无法被清理会导致pod无法被删除，比如operator添加了finalizers但是没有正确清理掉
+2. PVC卸载失败，比如存储端异常导致PVC无法正常卸载或者存储卷被其他进程占用
+3. 应用无法响应sigterm信号，比如忽略了信号，进入死循环或死锁状态，或正在等待外部资源，或是僵尸进程
+4. 网络相关问题（CNI插件异常）或者节点问题（kubelet停止运行）
+
+## Deployment/DaemonSet/StatefulSet
 
 ### K8s deployment升级的过程和升级策略是什么
 
@@ -1223,7 +1396,7 @@ K8s服务注册与传统的微服务架构的注册中心（如consul、eureka�
 - DNS注册阶段：CoreDNS通过API server监听的service变化，为新service自动创建DNS记录，如`mysvc.default.svc.cluster.local`，应用可以通过DNS名称解析service IP进行访问
 - Endpoints Controller自动将匹配的Pod列表写入到Endpoints对象中
 
-> k8s的服务注册是自动完成的，Pod和Service都是由控制面组件负责注册和维护
+> k8s的服务注册是自动完成的，Pod和Service都是由控制面组件负责注册和维护，还有一种服务注册的方式是自动环境变量注入（不推荐）
 
 ### K8s的网络模型是什么
 
