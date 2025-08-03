@@ -116,6 +116,11 @@ sequenceDiagram
 
 > 对比Helm/静态配置的局限性（如故障自愈、配置热更新）
 
+### 什么场景下应该选择CRD而非API聚合，CRD的局限是什么
+
+> CRD适合资源对象管理，API聚合适合非RESTful接口（如指标查询）
+> CRD局限：依赖controller实现业务逻辑，无法处理非资源请求
+
 ### CRD的字段怎么设计的
 
 > CRD中如何定义分片数、副本数、资源请求
@@ -125,12 +130,28 @@ sequenceDiagram
 
 > 升级Redis版本的时候，Operator如何实现滚动升级并避免数据丢失
 
+### 升级K8s API的时候，如何保证旧版本CR对象自动转换
+
+> 实现Webhook Conversion或依赖kube-apiserver的storage version migrator
+> 在CRD中定义多版本Schema并指定storageVersion
+
 ## 控制器逻辑实现
+
+### 网络抖动导致重复调用Reconcile时，如何避免重复创建资源
+
+> Reconcile循环的幂等性
+> 所有操作基于Server-Side Apply（字段管理机制）
+> 执行前检查资源状态（比如设置deployment.Status.ReadyReplicas为desired表示已经处理）
 
 ### 如何处理频繁触发Requeue（如Pod未就绪），如何避免无效协调
 
 > Reconcile循环优化
 > 指数退避重试+事件过滤（如仅关注Spec变更）
+
+### .status更新失败导致状态与真实集群不一致，如何修复
+
+> 实现状态重建：定期全量同步真实状态到.status
+> 使用Generation机制：metadata.generation变化时触发强制同步
 
 ### 如何让用户通过kubectl get直观看到集群状态
 
@@ -140,6 +161,16 @@ sequenceDiagram
 
 > Finalizer的机制
 > 实现Reconcile中删除逻辑+清理完成后移除Finalizer
+
+### 删除CR时，如何保证其创建的ConfigMap会被自动删除
+
+> 垃圾回收依赖
+> 设置OwnerReference
+
+### Finalizer未移除导致CR对象卡在Terminating状态，如何定位
+
+> 检查finalizer字段的值
+> 分析controller日志中删除逻辑的报错
 
 ## K8s集成
 
@@ -153,10 +184,30 @@ sequenceDiagram
 > 服务发现机制
 > Headless server+StatefulSet域名，自定义service实现读写分离
 
+### Operator能否管理其他Namespace的资源，如何避免权限扩散
+
+> 通过clusterRole授权，但限定namespaceSelector
+> 在CR中指定目标Namespace（如spec.targetNamespace: prod）
+
 ### 如何为每个Redis实例分配持久化存储
 
 > 存储设计
 > 是否支持动态卷供应（StorageClass），如何配置本地卷（Local PV）优化性能
+
+### 如何让Redis主节点优先调度到高SSD性能的节点
+
+> 在statefulSet中定义nodeAffinity+自定义节点标签（如disk-type: ssd）
+> 扩展调度器实现Binpacking算法
+
+### Operator需要哪些权限，如何避免授予*.*
+
+> RBAC最小权限实践
+
+### 如何追溯是谁修改了CRD配置
+
+> 审计日志追踪
+> 启用K8s的审计日志
+> 在CRD中标记敏感字段`spec.replicas: {x-kubernetes-audit: "true"}`
 
 ## 高可用与数据安全
 
@@ -166,10 +217,17 @@ sequenceDiagram
 > 监听Pod的Unhealthy事件，调用Redis CLUSTER FAILOVER命令或通过sentinel切换
 > 更新Endpoints指向新的主节点
 
-如何实现定时备份Redis RDB文件到S3，恢复流程如何设计
+### 如何实现定时备份Redis RDB文件到S3，恢复流程如何设计
 
 > cronjob执行redis-cli --rdb+aws s3 cp
 > 恢复时创建临时Pod挂载备份文件并加载
+
+### 如何在不中断Redis服务的情况下升级Operator
+
+> 金丝雀发布：新版本的Operator逐步接管部分CR对象
+> 双写机制：旧版本Controller不退出，直到所有CR迁移完毕
+
+### 修改配置之后，如何让运行中的Pod重新加载配置
 
 ## 生产环境运维
 
@@ -182,6 +240,16 @@ sequenceDiagram
 
 > Sidecar容器部署redis-operator
 > 自动创建ServiceMonitor CR（Prometheus Operator）
+
+### 如何监控Reconcile延迟和错误率
+
+> 集成Prometheus Client Go
+> 在/metrics端点暴露数据
+
+### 一次kubectl apply触发多个Operator协调，如何串联全链路日志
+
+> 注入Opentelementry TraceID到CR的Annotation
+> 日志库集成Jaeger上报
 
 ### 如何保护Redis密码，Operator如何将密码注入Pod
 
@@ -207,12 +275,19 @@ sequenceDiagram
 ### 如何通过Admission Webhook拦截CR创建请求并验证资源的合法性
 
 > webhook集成
-> 比如拒绝replicas < 3不满足高可用
+> 比如拒绝replicas < 3不满足高可用，强制replica为奇数，为未填写的字段设置默认值
+> 在controller的reconcile中通过Mutating Webhook注入默认值
 
 ### Operator能否同时管理多个集群中的Redis，架构如何设计
 
-> 实现Cluster API兼容的控制平面
-> 每个集群部署Operator Agent
+> 多集群联邦管理
+> Hub-Spoke模型：中心集群部署Operator，通过CLuster API管理子集群
+> GitOps驱动：子集群的CR状态同步到Git仓库
+
+### 如何支持Redis数据存储在AWS S3/Minio/NFS
+
+> 定义抽象接口StorageProvider
+> 实现S3Storage、NFSStorage注册到Controller
 
 ## 底层原理
 
@@ -227,6 +302,83 @@ sequenceDiagram
 > Leader Election机制
 > 基于ConfigMap或Lease资源实现选主
 > 只有Leader执行Reconcile
+
+### Controller重启期间发生Pod删除事件，如何保证数据不丢失
+
+> Informers缓存一致性
+> Informer基于ResourceVersion增量同步，通过List+Watch重建缓存
+
+### 当集群有5000+CR对象时，如何优化Operator，如何降低API server的负载
+
+> 大规模集群设计
+> informer调优，设置LimitPager分页List
+> 事件过滤，使用FieldSelector缩写监听范围
+> 批量处理，合并相同资源事件
+
+> Client-Go性能优化
+> 调优Informer的ResyncPeriod（设为0禁用定时全量同步）
+> 使用Field Selector减少不必要的监听
+
+### Controller如何通过Informer保证本地缓存与集群状态一致，遇到网络分区时会发生什么
+
+> Informer机制的理解（List-watch原理和缓存一致性）
+> 对分布式系统故障场景的处理能力（网络分区、状态漂移）
+> 为什么watch需要依赖ResourceVersion，不用会怎样
+> 重新lits全量数据时，如何避免业务逻辑被错误触发
+> 如果网络分区期间发生了1000次事件，重连后Informer如何快速同步
+
+### Reconcile循环如何避免资源冲突
+
+> 乐观锁、冲突解决
+
+### sharedInformer如何减少API server的压力
+
+> 缓存复用、List-Watch优化
+
+### etcd存储CRD数据的结构是什么
+
+> 数据格式、序列化
+
+### 如何验证CRD字段的合法性
+
+> OpenAPI schema、Webhook
+
+### Operator如何应对API server不可用
+
+> Informer自动退避重连（指数退避算法）
+> 本地缓存允许只读操作
+
+### 为什么需要设置--max-concurrent-reconciles
+
+> 并发控制
+> 避免单个资源协调阻塞整体
+> 默认值通常为CPU核心数
+
+### 如何实现Operator的版本热升级
+
+> 零宕机升级
+> Leader Election：旧版本释放Leader后新版本接管
+> 双活窗口期：新旧版本同时运行直至旧版本无协调中资源
+
+### StatefulSet如何保证Pod网络标识稳定
+
+> Headless service
+> 通过PodIdentify机制保留主机名
+
+### 跨节点Pod如何访问Local PV
+
+> 定义StorageClass延迟绑定：`volumeBindingMode: WaitForFirstConsumer`
+> 调度器确保Pod运行在PV所在节点
+
+### 如何防止ServiceAccount token泄漏
+
+> 为Operator创建专用的Service Account
+> 启用BoundServiceAccountTokenVolume（卷挂载令牌自动轮转）
+
+### Admission Webhook超时导致集群卡顿怎么办
+
+> 调整failurePolicy: Ignore避免阻塞API
+> 优化Webhook响应时间（如缓存校验结果）
 
 ---
 
