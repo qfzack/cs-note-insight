@@ -778,7 +778,7 @@ Raft中每个节点都处于三种角色之一：**Leader**、**Follower**、**C
 当Leader被选举出来后，客户端发送的写请求处理流程为：
 
 - 请求被etcd的Leader接收，或者从Follower重定向过来
-- Leader将请求日志追加到自己的Write-Ahead Log（WAL）确保宕机之后可恢复（uncommitted）
+- Leader将请求日志追加到自己的**预写日志**Write-Ahead Log（WAL）确保宕机之后可恢复（uncommitted）
 - 通过AppendEntries发送给Follower（心跳携带日志），Follwer将日志写入WAL
 - 一旦超过半数的Follower确认日志写入并响应，Leader将日志标记为已提交（commitIndex更新）
 - Leader和Follwer将提交该日志并应用到状态机（更新真实数据）
@@ -796,7 +796,7 @@ Raft中每个节点都处于三种角色之一：**Leader**、**Follower**、**C
 
 Raft协议中规定只有得到半数以上的投票才能成为Leader，当集群被分区，不会出现多个Leader，并且总有一个分区有半数以上的节点（奇数个总节点数），可以选举出Leader
 
-当etcd出现脑裂无法选举出Leader时，etcd集群不可写入数据，从而避免数据不一致，但是可以提供读服务（弱一致性），只有选举出Leader后才能正常提供写服务，当etcd集群恢复后，Followers会自动同步Leader的日志同步
+当etcd出现脑裂无法选举出Leader时，etcd集群不可写入数据，从而避免数据不一致，但是可以提供读服务（弱一致性），只有选举出Leader后才能正常提供写服务，当etcd集群恢复后，Followers会自动同步Leader的日志
 
 ### 复制到Followers的日志有什么作用
 
@@ -859,7 +859,7 @@ etcd的性能问题通常体现在延迟高、写入慢、集群不稳定，排�
 - Pod是K8s最小的部署单元
 - Pod可以包含一个或多个容器，通常一个容器运行一个进程
 - 一个Pod只能运行在单个节点上
-- 每个Pod有一个根容器（pause容器）负责管理其他业务容器
+- 每个Pod有一个**根容器**（pause容器）负责管理其他业务容器
 - Pod中的容器共享网络命名空间和IP，因此可能出现端口冲突
 
 ### K8s的Pause容器是什么
@@ -883,7 +883,7 @@ Init容器是在Pod初始化阶段（调度到节点后）运行的特殊容器�
 
 工作原理：
 
-- kubelet启动时，通过--pod-manifest-path=/etc/kubernetes/manifests 参数指定目录
+- kubelet启动时，通过--pod-manifest-path=/etc/kubernetes/manifests参数指定目录
 - kubelet定期扫描这个目录
 - 发现YAML文件则会创建对应的pod
 - 这些pod是本地的、静态的，不会被控制平面调度
@@ -920,6 +920,21 @@ Pod的生命周期：
 
 - PostStart：容器启动后立即执行
 - PreStop：容器终止前执行，用于优雅关闭
+
+```yaml
+spec:
+  containers:
+  - name: myapp
+    image: busybox
+    command: ["sh", "-c", "echo Hello && sleep 3600"]
+    lifecycle:
+      postStart:
+        exec:
+          command: ["sh", "-c", "echo PostStart hook running >> /tmp/hook.log"]
+      preStop:
+        exec:
+          command: ["sh", "-c", "echo PreStop hook running >> /tmp/hook.log"]
+```
 
 ### K8s中Pod的健康检查方式
 
@@ -979,27 +994,27 @@ pod的重启策略是控制容器故障恢复行为的重要机制：
 
 ### K8s Pod常见的调度方式
 
-默认调度
+**默认调度**
 
 - k8s调度器 (scheduler) 会根据Pod的资源需求、节点资源可用性、以及预定义的调度策略（如Taints和Tolerations、Node Affinity等）自动将Pod调度到合适的节点上
 
-手动调度（Node Selector）
+**手动调度（Node Selector）**
 
 - 通过在pod spec中指定节点名称，可以强制调度到指定的节点
 - 通过在pod的YAML文件中指定`nodeSelector` 字段，可以指定Pod必须运行在具有特定标签的节点上
 
-亲和性调度（Affinity/Anti-Affinity）
+**亲和性调度（Affinity/Anti-Affinity）**
 
 - Node Affinity： 类似于`nodeSelector`，但提供了更灵活的匹配规则，可以使用`requiredDuringSchedulingIgnoredDuringExecution`（硬性要求）和 `preferredDuringSchedulingIgnoredDuringExecution`（软性要求）
 - Pod Affinity/Anti-Affinity： 可以基于Pod之间的关系进行调度，例如，将两个Pod调度到同一个节点上（亲和性），或者避免将两个Pod调度到同一个节点上（反亲和性）
 
-污点与容忍（Taints&Tolerations）
+**污点与容忍（Taints&Tolerations）**
 
 - 节点设置了污点（Taints），表示默认拒绝调度pod上来，除非pod设置了对应的Toleration才能调度上来
 
-优先级与抢占调度（Preemption）
+**优先级与抢占调度（Preemption）**
 
-- 设置`priorityClassName`(使用自定义的`PriorityClass`资源)，当高优先级pod没有资源时，可能抢占低优先级pod所在的节点资源，用于保留核心服务
+- 设置`priorityClassName`(使用自定义的`PriorityClass`资源，然后在Pod中使用)，当高优先级pod没有资源时，可能抢占低优先级pod所在的节点资源，用于保留核心服务
 
 拓扑分布调度
 
@@ -1040,9 +1055,9 @@ pod的重启策略是控制容器故障恢复行为的重要机制：
 
 K8s的pod是最小的调度单元，其中通常运行一个或者多个容器
 Pod的创建过程：
-1. 用户提交请求（kubectl或者api），请求包含pod中容器的镜像、资源限制、环境变量、存储卷、端口等pod配置
-2. apiserver接收到用户的请求后，先进行权限鉴定确保用户有权限创建pod，然后验证配置的正确性并补全默认的配置，最后将pod配置保存到etcd中，状态为pending
-3. scheduler通过list-watch监控到未调度的pod（spec.nodeName为空），然后根据调度算法选择合适的node来运行pod,更新spec.nodeName后将pod信息写回apiserver，主要考虑的因素有：
+1. 用户提交请求（kubectl或者rest api），请求包含pod中容器的镜像、资源限制、环境变量、存储卷、端口等pod配置
+2. apiserver接收到用户的请求后，先进行权限鉴定确保用户有权限创建pod，然后验证配置的正确性并补全默认的配置（一系列准准入控制器），最后将pod配置保存到etcd中，状态为pending
+3. scheduler通过list-watch监控到未调度的pod（pending且spec.nodeName为空），然后根据调度算法选择合适的node来运行pod,更新spec.nodeName后将pod信息写回apiserver，主要考虑的因素有：
    - 请求资源：pod请求的CPU和memory
    - node资源：node当前的负载和可用资源
    - 亲和性/反亲和性：pod对节点的亲和性和反亲和性规则
