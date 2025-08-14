@@ -112,6 +112,21 @@ sequenceDiagram
 
 ## CRD设计问题
 
+### 这个redis operator是什么，使用到了哪些k8s的机制
+
+- 自定义资源定义（CRD, Custom Resource Definition）
+  - 通过定义 Redis 自定义资源（CR）来扩展 Kubernetes API，允许用户管理 Redis 实例
+
+- 使用controller-runtime框架实现了一个控制器RedisReconciler，支持三种redis部署模式，负责监听和管理Redis自定义资源的生命周期
+  - controller-runtime通过Informer监听资源的变化事件（如创建、更新、删除），并将事件放入工作队列
+  - worker goroutine会处理队列中的事件，处理时controller-runtime会调用实现了Reconciler接口的Reconcile方法，传入对应的参数，控制执行响应的逻辑
+  - SetupWithManager方法将控制器注册到Controller Manager
+
+- 配置RBAC规则，控制对Kubernetes资源的访问权限
+  - 控制器启动也是作为一个pod运行，要避免让控制器有过多的权限，只赋予管理redis必须的资源和权限
+
+- 支持使用Storage Class来根据PVC创建PV实现redis资源的持久化
+
 ### 为什么要选择使用Operator来管理Redis
 
 > 对比Helm/静态配置的局限性（如故障自愈、配置热更新）
@@ -119,6 +134,9 @@ sequenceDiagram
 - 使用CRD可以让自定义的资源像K8s原生资源一样集成到K8s中，使用K8s的权限控制、生命周期管理、审计、自动恢复等
 - 在operator中可以实现对自定义资源的自动部署、扩容、备份、恢复等复杂的操作，简化资源的部署和运维工作
 
+### 你的operator如何实现redis服务的高可用的
+
+operator实现redis服务的高可用通常是依赖**K8s的控制循环**+**Redis自身的主从/哨兵机制**，来实现自动部署、监控、故障恢复
 
 ### 什么场景下应该选择CRD而非API聚合，CRD的局限是什么
 
@@ -393,3 +411,19 @@ sequenceDiagram
 - 深入理解kubebuilder框架原理（如controller runtime的reconcile原理）
 - 强调生产经验（如性能调优、安全审计、灾备方案）
 - 如果重新设计这个Operator会改进哪些方面（分层设计、增强可观测性、支持插件化后端存储）
+
+## K8s扩展
+
+### scheduler的扩展机制
+
+1. 使用Scheduler Framework
+
+官方支持的扩展机制，可以通过插件化架构实现自定义调度逻辑
+
+2. Scheduler Extender
+
+通过HTTP回调机制扩展调度器，不用重新编译调度器
+
+3. 自定义调度器
+
+完全自定义调度器实现，适用于复杂的需求

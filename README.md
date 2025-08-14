@@ -113,133 +113,54 @@
 
 ---
 
-# 云原生岗位方向
+# 云原生方向
 
-## 1.Kubernetes平台工程师/SRE (站点可靠性工程师)
+## IaaS基础设施层
 
-### 核心职责
-- 设计、部署、运维、调优大规模 Kubernetes 生产集群
-- 开发自动化工具（CI/CD流水线、集群生命周期管理、监控告警、自愈系统）提升平台稳定性和效率
-- 定义和实施 SLO/SLI/SLA，进行容量规划、故障演练（Chaos Engineering）
-- 保障平台的高可用性、可扩展性、安全性和性能
+- 虚拟化与容器技术
+  - KVM、Xen、Firecracker（轻量级虚拟化）
+  - 容器运行时优化（containerd、gVisor、Kata Containers）
+- 云网络
+  - SDN（软件定义网络）
+  - Overlay网络（VXLAN、Geneve）
+  - 云边协同网络（边缘节点高速互联）
+- 云存储
+  - 对象存储（S3、Ceph RGW）
+  - 分布式文件系统（CephFS、Lustre、GlusterFS）
+  - 块存储优化（NVMe-oF、CSI）
+- 硬件加速与异构计算
+  - GPU/TPU调度
+  - FPGA云服务
+  - 智能网卡（SmartNIC/DPU）
 
-### 核心技能要求
-- 精通Kubernetes: 核心概念（Pod, Deployment, Service, Ingress, ConfigMap, Secret, PV/PVC, StatefulSet, DaemonSet等）、网络（CNI, Service Mesh）、存储（CSI）、调度、安全（RBAC, NetworkPolicy, PodSecurityPolicy/Admission Controllers）、多集群管理
-- Linux 系统: 深入理解（内核、网络、存储、性能调优）
-- 网络: TCP/IP, DNS, HTTP, Load Balancing, 云网络（VPC, Security Groups）
-- 基础设施即代码 (IaC): Terraform, Pulumi
-- CI/CD: GitLab CI, Jenkins, Argo CD, Flux CD
-- 监控与可观测性: Prometheus, Grafana, Alertmanager, Loki, ELK Stack, OpenTelemetry, 指标/日志/链路追踪
-- 编程/脚本能力: Go (必备) 用于开发Operator/控制器/工具， Python/Shell 用于自动化脚本
-- 云平台: 至少精通一个主流公有云（AWS, GCP, Azure）或私有云方案（OpenStack, VMware）
-- SRE理念与实践: 错误预算、自动化、减少琐事、事故响应
+## PaaS平台层
 
-### 发展前景
-随着K8s成为事实标准，几乎所有上云或数字化转型的企业都需要专业的K8s平台/SRE团队来支撑其核心基础设施复杂度高，价值大
+- 云原生数据库与数据服务
+  - 分布式SQL（TiDB、CockroachDB）
+  - 流处理平台（Flink、Kafka Streams）
+  - OLAP 云化（ClickHouse Cloud、Snowflake）
+- 大数据与AI平台
+  - 云原生AI训练平台（Kubeflow、MLFlow on K8s）
+  - 自动机器学习（AutoML）
+- 多云与混合云管理
+  - 统一API（Crossplane、Cluster API）
+  - 云资源联邦（Karmada、Federation v2）
+- 云安全平台
+  - 租户隔离
+  - 云安全扫描（CSPM/CWPP）
+  - 零信任架构
 
-## 2.云原生开发工程师/Kubernetes应用开发者
+## SaaS应用层
 
-### 核心职责
-- 设计和开发运行在Kubernetes上的云原生应用（微服务、Serverless函数）
-- 编写符合12-Factor App原则的应用
-- 开发Kubernetes Operator/Controller来管理复杂有状态应用
-- 集成Service Mesh (Istio, Linkerd)、Serverless框架（Knative, OpenFaaS）
-- 优化应用在K8s环境下的性能、资源利用率和可观测性
-
-### 核心技能要求
-- 精通 Go: 这是核心开发语言 深入理解并发模型（goroutine, channel）、标准库、常用框架（Gin, Echo）
-- 精通 Kubernetes: 不仅会部署应用，更要理解其API、CRD、Operator模式、Client-go库了解控制器工作原理
-- 云原生应用设计模式: Sidecar, Init Container, Operator, Service Mesh, 声明式API
-- 微服务架构: 设计、开发、通信（gRPC, REST）、服务发现、容错（熔断、限流、降级）
-- 容器化: Dockerfile最佳实践、镜像构建优化
-- API设计: RESTful, gRPC/protobuf
-- 可观测性: 在代码中集成指标、日志、链路追踪（OpenTelemetry）
-- 基础了解: CI/CD流程、基本的K8s运维知识、云服务
-
-### 发展前景
-企业需要大量能够构建真正“云原生”应用的开发者，而不仅仅是把传统应用塞进容器Operator开发是深度需求
-
-### 薪资水平 
-(2024年，中国一线/新一线城市，年薪范围)：
-- 中级 (3-5年经验)：40万 - 70万人民币 (Go深度和K8s开发能力是关键溢价点)
-- 高级 (5-8年经验)：65万 - 110万+人民币
-- 专家/架构师：85万 - 150万+人民币
-数据来源参考： 同上具备Operator开发经验和复杂云原生应用构建能力的人才溢价明显
-
-## 3.服务网格工程师
-
-### 核心职责
-- 评估、部署、配置、运维和管理服务网格（如 Istio, Linkerd, Consul Connect）
-- 利用服务网格实现流量管理（金丝雀发布、蓝绿部署、A/B测试）、安全（mTLS、策略）、可观测性
-- 解决服务网格引入的性能开销和复杂性挑战
-- 与开发团队协作，指导他们使用网格特性
-
-### 核心技能要求
-- 深入理解服务网格原理: Sidecar代理（Envoy）、控制平面和数据平面、xDS API
-- 精通至少一种主流服务网格: Istio（最主流）或Linkerd
-- 精通 Kubernetes: 服务网格深度依赖K8s
-- 网络: TCP/IP, HTTP/2, mTLS原理
-- 可观测性: 利用网格提供的指标、日志、链路追踪
-- 安全: 理解零信任网络、策略执行
-- 编程/脚本能力: Go/Python/Shell用于自动化和管理了解Envoy配置（xDS）
-
-### 发展前景
-随着微服务架构的普及和复杂度的提升，服务网格成为管理微服务通信的重要基础设施需求集中在大型互联网公司和金融科技等复杂系统领域
-
-## 4.容器运行时/基础设施工程师 (更底层)
-
-### 核心职责
-- 研究、开发或维护容器运行时（containerd, CRI-O）、镜像构建工具（BuildKit）、安全容器技术（Kata Containers, gVisor）
-- 优化容器底层基础设施（Linux内核、虚拟化）
-- 参与上游开源社区（如CNCF项目）
-
-### 核心技能要求
-- 极强的系统编程能力: 精通Go和C/C++
-- 深入理解操作系统原理: Linux内核（命名空间、cgroups、文件系统、网络栈）、虚拟化技术
-- 精通容器原理: OCI标准、runc、容器运行时架构
-- 安全: 容器隔离、安全沙箱技术
-- 网络与存储: 底层实现原理
-- 开源社区协作经验
-
-### 发展前景： 非常好，但门槛极高
-需求主要来自大型云厂商（AWS, GCP, Azure, 阿里云, 腾讯云, 华为云）、容器技术提供商（Docker, Red Hat）和对底层有极致需求的公司岗位数量相对前几个少，但对技术深度要求极高
-
-## 5.DevOps 工程师 (云原生方向)
-
-### 核心职责
-更侧重于打通开发与运维的流程自动化，在云原生背景下，其工作与K8s平台工程师/SRE有大量重叠，核心是使用云原生技术栈实现DevOps实践
-
-### 核心技能要求
-- 是上述平台工程师/SRE和云原生开发工程师技能的子集或组合，特别强调自动化、CI/CD流水线设计、工具链整合（GitOps）和协作沟通能力Go是加分项，Python/Shell更常用
-
-### 发展前景： 好 
-持续的需求，尤其在传统企业转型过程中
-
-## 6.云原生安全工程师
-
-### 核心职责：
-- 保障Kubernetes集群、容器镜像、容器运行时、微服务间通信的安全
-- 实施安全策略（Pod Security, NetworkPolicy, mTLS）、镜像扫描、运行时安全监控、合规审计
-- 使用Falco, OPA/Gatekeeper, Trivy, kube-bench等工具
-
-### 核心技能要求：
-- 扎实的安全基础: 网络安全、应用安全、密码学基础
-- 精通 Kubernetes 安全机制: RBAC, NetworkPolicy, Pod Security Standards/Admission Controllers, Secrets管理（如Vault集成）
-- 了解容器安全: 镜像漏洞扫描、运行时保护、供应链安全
-- 熟悉云原生安全工具链
-- 一定的编程/脚本能力（Go/Python）
-
-### 发展前景： 快速增长且紧缺
-云原生环境的安全挑战巨大，专业人才缺口明显
-
----
-
-| 方向            | 关键技术栈                               | 代表岗位             |
-| -------------- | --------------------------------------- | ------------------ |
-| K8s运维开发     | Operator SDK/CRD/Helm                   | K8s平台工程师        |
-| 云原生可观测性   | OpenTelemetry/PromQL/Grafana            | 可观测性架构师        |
-| 服务网格治理     | Istio/Envoy/gRPC                        | 服务网格工程师        |
-| 平台工程         | Backstage/Crossplane/KubeVela           | 平台产品经理         |
-| 边缘计算         | K3s/KubeEdge/eBPF                       | 边缘云架构师         |
-| 安全合规         | OPA/Gatekeeper/Confidential Containers  | 云安全专家           |
-| Serverless架构  | Knative/OpenFaaS/WasmEdge               | Serverless工程师     |
+- 云原生应用框架
+  - 微服务框架（Spring Cloud、Dapr、Service Mesh）
+  - API网关（Kong、Envoy、Istio Gateway）
+- DevOps与GitOps
+  - ArgoCD、FluxCD
+  - 基础设施即代码（Terraform、Pulumi）
+- 边缘计算与IoT云平台
+  - KubeEdge、OpenYurt
+  - IoT 设备云接入
+- 可观测性与运维
+  - 分布式追踪（OpenTelemetry）
+  - 统一监控（Prometheus、Thanos、Loki）
