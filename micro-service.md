@@ -116,3 +116,62 @@ K8s提供了哪些服务治理的功能，需要补充哪些
 - 负载均衡
   - 内建clusterIP+kubeproxy，可以将请求自动分发到多个pod
 - 除此之外需要引入的组件：服务网格（Istio、Linkerd）、API网关（Kong、Istio gateway）、熔断/限流/降级（Istio）、链路追踪（Opentelemetry）、配置中心（Nacos，Apollo）、监控/告警（Prometheus）
+
+---
+
+## 微服务架构
+
+### 微服务框架的主要功能
+
+服务通信
+- 同步调用（HTTP/REST、gRPC、Thrift）
+- 异步调用（消息队列：Kafka、RabbitMQ）
+
+服务注册与发现
+- Consul、Eureka、Etcd、Nacos
+
+配置中心
+- 集中化配置管理（Spring Cloud Config、Appolo），支持动态刷新配置
+
+容错机制
+- 熔断、限流、重试、降级
+
+日志监控与链路追踪
+- 统一的日志采集与输出格式
+- Prometheus指标采集与暴露
+- 分布式链路追踪
+
+认证鉴权
+- 鉴权与认证：支持OAuth2.0、JWT、API Key等
+- 服务间安全通信：支持TLS/MTLS
+
+此外还要支持高性能通信协议如gRPC、Dubbo，插件化/中间件扩展（支持自定义拦截器、Filter、Hook）
+
+### k8s对微服务架构的支持
+
+K8s已提供：
+
+- 服务发现：通过coreDNS分配DNS名称
+- 负载均衡：kube-proxy+service实现负载均衡
+- 配置管理：configMap/secret通过挂载注入环境变量
+- 容错与自愈：探针检测、Pod重启、副本集保证服务可用
+- 服务部署升级：支持滚动更新、canary、蓝绿发布
+
+不支持的：
+
+- 安全通信：想要mTLS加密、零信任认证，一般用Istio、Linkerd
+- 熔断限流重试：可以在service mesh或微服务框架里实现
+- 监控和链路追踪：常用Prometheus+Grafana、Jaeger/Zipkin来做metrics和tracing
+- 消息队列和异步通信：需要MQ中间件，由业务框架引入
+
+### 实现canary发布
+
+同时运行两个版本的deployment v1和v2
+
+调整v1和v2的Pod数量比例，逐步进行切换
+
+### 实现蓝绿发布
+
+部署两套deployment（blue/green），只让service指向其中一个
+
+新版本（green）准备好之后，修改service的selector，切换到green的pod
