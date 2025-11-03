@@ -1,166 +1,103 @@
-# Golang云原生
+## 面试方向速查指南
 
-## [Golang基础](./golang-note.md)
+### Backend（后端）
 
-- 语言基础
-  - 并发编程：goroutine、channel、select、sync包的熟练使用
-  - 内存管理：GC机制理解、内存优化、性能分析
-  - 接口设计：interface的合理使用、组合模式
-  - 错误处理：error handling最佳实践
-  - 反射和范型：适当场景下的高级特性使用
-- 标准库掌握
-  - net/http、context、datastore/sql
-  - encoding/json、fmt、log
-  - sync、time、os等
+- 语言与运行时（Go）
+  - 并发与内存模型：goroutine 调度、GMP、channel 语义、select 超时、context 取消链；happens-before、atomic 与锁（Mutex/RWMutex）取舍（参见：[Golang基础](./golang-note.md)）
+  - 内存与 GC：逃逸分析、栈/堆分配、三色标记/写屏障、STW 优化；内存泄漏定位（pprof）与对象复用（sync.Pool）
+  - 错误处理：error wrapping、哨兵错误 vs 自定义类型、可重试错误分类
+- 网络与协议
+  - TCP/UDP：握手挥手、TIME_WAIT/FIN_WAIT、Nagle/粘包/半包；连接池与 Keep-Alive
+  - HTTP/1.1 vs HTTP/2/3：队头阻塞、连接复用、HPACK/QPACK、TLS 基础；gRPC（流式、拦截器、超时与重试）
+- Web 与微服务
+  - 路由/中间件、认证授权（JWT/OAuth2/OIDC）、CORS/CSRF；日志规范、结构化日志与追踪注入（参见：[框架和工具](./web-framework.md)）
+  - API 设计：资源建模、分页（游标优先）、幂等键、乐观锁（版本号/ETag）、错误码与可观测字段
+  - 服务治理：注册发现、配置中心、限流（令牌桶/漏桶）、熔断隔离（舱壁）、超时/重试/退避、雪崩防护（参见：[设计模式](./micro-service.md)）
+  - 分布式事务：2PC/TCC/Saga/Outbox 对比、适用场景与失败补偿（参见：[消息队列和流处理](./message-queue.md)）
+- 数据与缓存
+  - SQL 与索引：B+Tree、覆盖/联合索引与最左匹配、回表、索引失效场景；执行计划与慢查询分析
+  - 事务与隔离级别：读已提交/可重复读/串行化、MVCC、幻读/脏读/不可重复读
+  - 连接池：池大小、超时、突刺流量与雪崩；分库分表与路由/倾斜/热点处理（参见：[数据库和存储](./database.md)）
+  - Redis：常用结构（String/Hash/Set/ZSet/Bitmap/HyperLogLog）、延迟队列、布隆过滤器、分布式锁正确性（过期/续约/单点/时钟漂移）
+  - 缓存策略：Cache Aside/Read-Through/Write-Through/Write-Back，双写一致、穿透/击穿/雪崩治理
+- 分布式与系统设计
+  - 一致性与可用性：CAP、线性一致/最终一致、Quorum
+  - 全局 ID：雪花/数据库号段/Leaf/Redis 自增；时钟问题与单调性
+  - 消息语义：At-most/At-least/Exactly-once、去重与幂等键、事务消息/Outbox（参见：[消息队列和流处理](./message-queue.md)）
+  - 任务调度：延时/重试/死信、幂等与去重窗口、顺序性保证
+  - 设计题套路：流量估算、容量与 QPS、读写放大、热点与分层缓存
+- 可观测性与性能
+  - 三板斧：Metrics/Logs/Tracing；红/四黄金指标、P50/P95/P99；关联 ID 贯通（参见：[监控和可观测性](#监控和可观测性)）
+  - 性能定位：pprof/火焰图、锁竞争、GC 压力、系统调用；基准与压测（RPS/并发/思考时间）
+  - 稳定性：限流/熔断/降级策略分层与回退
+- 测试与工程效率
+  - 单元/集成/契约测试；Testcontainers；Mock vs Fake；回归用例最小集合
+  - 代码质量：Lint、静态分析、依赖治理；Feature Flag 与金丝雀
+- 高频必答
+  - 幂等实现的几种方式与适用场景
+  - 设计高并发下订单/库存系统（热点/超卖/一致性）
+  - goroutine 泄漏排查与避免模式
+  - HTTP 重试的幂等性、安全退避与超时搭配
+  - 无损滚动升级与灰度发布策略（参见：[Kubernetes](#kubernetes)、[容器化技术](#容器化技术)）
+  - 分布式事务在电商订单的落地方案选型
+  - RPS→容量→资源估算与瓶颈定位（CPU/IO/DB）
 
-## 微服务架构
+### AI Agent
 
-- [设计模式](./micro-service.md)
-  - 微服务架构设计、开发、维护，包括创建松耦合的服务，支持独立开发、部署和扩展
-  - 服务拆分：领域驱动设计、业务边界划分
-  - API设计：RESTful API、gRPC、GraphQL
-  - 服务通信：同步/异步通信、消息队列
-  - 服务治理：服务注册发现、配置管理、熔断降级
-- [框架和工具](./web-framework.md)
-  - Web框架：Gin、Echo、Fiber、Beego
-  - RPC框架：gRPC、go-micro、go-kit
-  - 路由和中间件：请求处理、认证授权、日志处理
+- LLM 基础与提示工程
+  - Token/上下文窗口、温度/Top-p、系统提示/Few-shot、CoT/ToT；指令遵循与对齐
+  - 工具/函数调用：模式设计（参数约束/枚举/JSON Schema）、超时与重试、幂等与事务一致性、回退与降级
+- RAG 体系
+  - 切分策略：语义/标题感知/段落/滑窗；Embedding 选型与维度、向量归一化
+  - 向量库：pgvector/ES/Milvus/FAISS；索引类型、过滤检索、近邻数量与召回平衡
+  - 召回→重排：Sparse+Dense 混合、BM25、Cross Encoder/Reranker；多路检索与合并
+  - 索引与数据管道：清洗/去重/切分/增量；元数据与版本；冷/热数据分层
+  - 上下文构造：Citation、片段去噪、反向检索、窗口/摘要混合记忆
+  - 评测：检索指标（Recall@k/MRR/nDCG）、问答准确率、事实性（LLM-as-Judge）、离线集/在线 A/B（参见：[数据库和存储](./database.md)）
+- 编排与多智能体
+  - LangChain/LangGraph：有向图/状态机、工具路由、Plan-Execute-Reflect、可视化与回放
+  - 会话状态：短期窗口/长期记忆（向量/摘要/实体），遗忘策略与越界保护
+- 生产级服务化
+  - API 设计：流式 SSE、并发/排队、速率限制/配额、幂等键；成本控制（缓存/批处理/压缩/截断）
+  - 可靠性：提示/模型版本管理、Prompt 迁移、Guardrails（输入/输出过滤、PII/敏感词/越狱防护）、审计
+  - 观测：提示模板与变体、成本/延迟/调用成功率、工具调用指标/故障码（参见：[监控和可观测性](#监控和可观测性)）
+  - 部署：CPU/GPU 调度、亲和/污点、模型热加载与权重共享、并发与显存规划（参见：[Kubernetes](#kubernetes)、[容器化技术](#容器化技术)）
+- 高频必答
+  - 设计企业级 RAG 的端到端方案与评测闭环
+  - 如何降低幻觉并可验证（检索证据/结构化输出/校验器）
+  - 工具调用与业务事务一致性（Outbox/幂等键/补偿）
+  - 成本优化组合拳（结果缓存+截断+批处理+向量过滤）
+  - 多轮对话的记忆设计与遗忘策略
+  - Agent 失败的回退/纠错与可观测闭环
 
-## [数据库和存储](./database.md)
+### DevOps
 
-- 关系型数据库
-  - MySQL/PostgreSQL：SQL优化、事务处理、连接池
-  - ORM框架：Gorm、Ent、SQLx
-  - 数据库设计：表结构设计、索引优化、分库分表
-- NoSQL数据库
-  - Redis：缓存策略、分布式锁、数据结构
-  - MongoDB：文档数据库操作、聚合查询
-  - Elasticsearch：搜索引擎、日志分析
-
-## [消息队列和流处理](./message-queue.md)
-
-- 消息中间件
-  - Kafka：消息发布与订阅、流处理
-  - RabbitMQ：消息队列、任务分发
-  - Redis Stream：轻量级流处理
-- 异步处理
-  - 任务队列：Celery、Machinery
-  - 事件驱动架构：事件溯源、CQRS模式
-
-## 容器化技术
-
-- Docker核心能力
-  - 镜像管理：镜像分层优化、多阶段构建、私有仓库集成
-  - 容器操作：网络模式（Bridge/Overlay）、存储卷管理、资源限制（CPU/Memory）
-  - 编排工具：Kubernetes、Docker Compose
-- 容器底层技术
-  - Linux内核机制：Namespace隔离、Cgroups资源控制、UnionFS文件系统
-  - eBPF技术：网络流量分析、性能调优
-
-## Kubernetes
-
-- 架构与组件
-  - 核心组件作用：API Server调度流程、etcd一致性协议（Raft）、kube-proxy流量转发
-  - 集群管理：高可用部署、节点扩缩容、证书轮换
-- 资源对象与运维
-  - 工作负载：Deployment滚动更新策略、StatefulSet有状态服务管理、Operator开发
-  - 网络与存储：Service四层负载、Ingress七层路由、PV/PVC动态供给
-  - 故障排查：Pod状态异常（CrashLoopBackOff）、网络策略失败、资源竞争分析
-
-## 监控和可观测性
-
-- 监控系统
-  - Prometheus+Grafana：指标收集和可视化
-  - Jaeger/Zipkin：分布式链路追踪
-  - ELK Stack：日志收集和分析
-- 性能优化
-  - 性能分析：pprof使用、性能优化
-  - 压力测试：ab、wrk、JMeter
-  - 代码质量：静态分析、代码审查
-
-## DevOps实践
-
-- CI/CD
-  - 版本控制：git、代码审查
-  - 持续集成：jenkins、github actions
-  - 自动化部署：蓝绿发布、灰度发布
-- 测试
-  - 单元测试：testing包、mock框架
-  - 集成测试：API测试、数据库测试
-  - 压力测试：性能基准测试
-
-## [分布式系统](./distributed-system.md)
-
-- 分布式概念
-  - CAP理论：一致性、可用性、分区容错
-  - 分布式事务：两阶段提交、Saga模式
-  - 分布式锁：Redis锁、etcd锁
-- 高可用架构
-  - 负载均衡：Nginx、HAProxy
-  - 故障转移：主从切换、多活架构
-  - 容灾备份：数据备份恢复策略
-
-## 安全和合规
-
-- 应用安全
-  - 认证授权：JWT、OAuth2、RBAC
-  - 数据加密：TLS、数据库加密
-  - 安全扫描：漏洞检测、依赖安全
-- 接口安全
-  - API安全：限流、防爬、参数验证
-  - 跨域处理：CORS配置
-  - SQL注入防护：参数化查询
-
----
-
-# 云原生方向
-
-## IaaS基础设施层
-
-- 虚拟化与容器技术
-  - KVM、Xen、Firecracker（轻量级虚拟化）
-  - 容器运行时优化（containerd、gVisor、Kata Containers）
-- 云网络
-  - SDN（软件定义网络）
-  - Overlay网络（VXLAN、Geneve）
-  - 云边协同网络（边缘节点高速互联）
-- 云存储
-  - 对象存储（S3、Ceph RGW）
-  - 分布式文件系统（CephFS、Lustre、GlusterFS）
-  - 块存储优化（NVMe-oF、CSI）
-- 硬件加速与异构计算
-  - GPU/TPU调度
-  - FPGA云服务
-  - 智能网卡（SmartNIC/DPU）
-
-## PaaS平台层
-
-- 云原生数据库与数据服务
-  - 分布式SQL（TiDB、CockroachDB）
-  - 流处理平台（Flink、Kafka Streams）
-  - OLAP 云化（ClickHouse Cloud、Snowflake）
-- 大数据与AI平台
-  - 云原生AI训练平台（Kubeflow、MLFlow on K8s）
-  - 自动机器学习（AutoML）
-- 多云与混合云管理
-  - 统一API（Crossplane、Cluster API）
-  - 云资源联邦（Karmada、Federation v2）
-- 云安全平台
-  - 租户隔离
-  - 云安全扫描（CSPM/CWPP）
-  - 零信任架构
-
-## SaaS应用层
-
-- 云原生应用框架
-  - 微服务框架（Spring Cloud、Dapr、Service Mesh）
-  - API网关（Kong、Envoy、Istio Gateway）
-- DevOps与GitOps
-  - ArgoCD、FluxCD
-  - 基础设施即代码（Terraform、Pulumi）
-- 边缘计算与IoT云平台
-  - KubeEdge、OpenYurt
-  - IoT 设备云接入
-- 可观测性与运维
-  - 分布式追踪（OpenTelemetry）
-  - 统一监控（Prometheus、Thanos、Loki）
+- Linux/网络基石
+  - Namespace/cgroup 基础、容器与宿主隔离；进程/线程/文件描述符；常见内核限制
+  - 网络：TCP 状态、端口复用、DNS、HTTP/TLS、网络策略与排障（curl/tcpdump/ss）
+- CI/CD 与 GitOps（参见：[DevOps实践](#devops实践)）
+  - Pipeline 设计：缓存/并行/制品产物、依赖镜像、失败重试与断点续跑
+  - 环境推广：Dev→Staging→Prod，蓝绿/金丝雀/灰度、快速回滚与自动验证
+  - 质量门禁：测试覆盖、SAST/DAST、许可证与合规扫描
+- 容器与镜像（参见：[容器化技术](#容器化技术)）
+  - Dockerfile 多阶段、层优化、BuildKit、SBOM、镜像扫描与签名
+  - 供应链安全：签名（cosign）、重现性构建、SLSA 等级
+- Kubernetes（参见：[Kubernetes](#kubernetes)）
+  - 核心对象：Pod/Deployment/StatefulSet/Job/CronJob；滚更策略与探针（Liveness/Readiness/Startup）
+  - 资源与调度：Requests/Limits、QoS、HPA/VPA、亲和/反亲和、污点/容忍
+  - 网络与存储：Service（ClusterIP/NodePort/LB）、Ingress、CNI、PVC/PV、存储类；节点压力与 OOMKill
+  - 配置与密钥：ConfigMap/Secret、密钥轮换、密文管理（Sealed Secrets/KMS）
+  - Mesh 与流量治理：Istio/mTLS、熔断/超时/重试、流量镜像与金丝雀
+- 可观测性与稳定性（参见：[监控和可观测性](#监控和可观测性)）
+  - 指标/日志/链路统一栈（Prometheus/Grafana/Loki/Tempo）、SLO/SLI 与告警设计、降噪/去重
+  - 混沌工程与演练、容量规划与压测
+- IaC 与平台工程（参见：[云原生方向](#云原生方向)）
+  - Terraform 模块化/远端状态/漂移检测、环境差异管理；Policy as Code（OPA）
+- 安全与合规（参见：[安全和合规](#安全和合规)）
+  - 最小权限（RBAC）、镜像与依赖漏洞治理、密钥与证书管理、审计与合规
+- 高频必答
+  - 设计零停机发布与快速回滚（蓝绿/金丝雀）
+  - 排查 CrashLoopBackOff/ImagePullBackOff/OOMKilled
+  - HPA 指标选型与限流/熔断协同
+  - 多集群/多云发布与配置管理
+  - 告警分组、抑制与降噪策略
