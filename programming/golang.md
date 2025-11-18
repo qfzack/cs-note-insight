@@ -1,21 +1,11 @@
-- 语言基础
-  - 并发编程：goroutine、channel、select、sync包的熟练使用
-  - 内存管理：GC机制理解、内存优化、性能分析
-  - 接口设计：interface的合理使用、组合模式
-  - 错误处理：error handling最佳实践
-  - 反射和范型：适当场景下的高级特性使用
-- 标准库掌握
-  - net/http、context、datastore/sql
-  - encoding/json、fmt、log
-  - sync、time、os等
-
-- Golang语法规范 https://github.com/xxjwxc/uber_go_guide_cn?tab=readme-ov-file
+- golang编码规范 https://github.com/xxjwxc/uber_go_guide_cn?tab=readme-ov-file
+- golang设计模式 https://github.com/senghoo/golang-design-pattern
 
 ---
 
-# Golang内存分配与垃圾回收
+## golang内存分配与垃圾回收
 
-## 栈分配与堆分配
+### 栈分配与堆分配
 
 **栈分配**负责处理生命周期短、作用域明确的变量
 **堆分配**负责处理需要跨函数访问、生命周期较长的对象，go的GC主要关注堆上的对象，但是需要扫描栈来找到根引用
@@ -51,7 +41,7 @@ func outer() func() {
 }
 ```
 
-## 分配器架构
+### 分配器架构
 
 go的内存分配器借鉴了Google的TCMalloc，采用多级缓存的思想来减少锁竞争和提高分配效率
 
@@ -88,7 +78,7 @@ Go使用一个三层的内存分配器架构：
 
 size class是一组预设的对象大小值（从8B到32KB有67个大小），用来提升内存分配的效率，更大的对象需要从mheap通过page级别分配
 
-## 堆内存的划分
+### 堆内存的划分
 
 堆内存的划分可以看作是page+mspan+size class的分层结构
 
@@ -97,12 +87,12 @@ size class是一组预设的对象大小值（从8B到32KB有67个大小），�
 - size class是将堆上的小对象按照大小划分为8B～32KB不等的类（67个），每个size对应一个mcentral[sizeclass]，每个mcentral中存放一组mspan（被拆成N个对象槽）
 - 此外还有Tiny Allocator和Large Object分别处理微小对象（<=16B）和大对象（>32KB）的内存分配，大对象直接通过mheap分配连续的多个page
 
-## 内存管理单元
+### 内存管理单元
 
 - mspan：基本的内存管理单元，包含若干页，同一个mspan中的对象大小相同，mspan维护了空闲对象的位图，支持快速的分配和释放
 - 页管理：go使用8KB的页作为内存管理的基本单位，通过位图来跟踪页的使用状态
 
-## 堆内存分配策略
+### 堆内存分配策略
 
 堆内存分配对于不同大小的对象有不同的分配策略：
 - 微小对象（<16B）：使用**tiny allocator**，多个微小对象可以共享一个16字节的内存块，减少内存碎片
@@ -123,7 +113,7 @@ size class是一组预设的对象大小值（从8B到32KB有67个大小），�
 5. mcentral如果也没有，向mheap请求分配新的span
 6. mheap如果不够，则向操作系统申请内存
 
-## 垃圾回收机制
+### 垃圾回收机制
 
 go的垃圾回收（GC）是一个并发、三色标记清除+混合写屏障的高性能垃圾回收器，在程序运行时异步地找出不再被引用的堆对象并释放内存，目的是在低停顿时间和高吞吐量之间取得平衡
 
@@ -151,7 +141,7 @@ GC的过程包括四个阶段：
   - GC不会释放内存给操作系统，而是留在堆中供下次使用
   - 后续新的对象可以重新使用这些回收的mspan
 
-## 三色标记算法
+### 三色标记算法
 
 GC把堆上的所有对象分为三类：
 
@@ -172,7 +162,7 @@ GC的目标是把所有从根可达的对象都标记为黑色，其余的白色
 三色标记不变性：黑色对象不能引用白色对象，否则白色对象会被错误清除（实际情况就是可能出现对象被标记为黑色，然后后面又引用了一个新增的白色对象）
 为了保证不出现这种情况，就需要在并发阶段使用写屏障
 
-## 并发标记的写屏障
+### 并发标记的写屏障
 
 并发标记阶段程序孩还在运行的时候，可能会有指针写入操作，这就需要写屏障来保证三色标记不变性：
 
@@ -198,12 +188,16 @@ GC的目标是把所有从根可达的对象都标记为黑色，其余的白色
   - 封装（encapsulatuion）：将数据和方法绑定在一起，并隐藏内部的细节，仅对外提供接口调用
   - 继承（inheritance）：子类继承父类的属性和行为，实现代码的复用
   - 多态（polymorphism）：相同的接口可以有不同的实现，提高扩展性
-- golang不是纯粹的面向对象语言，但是支持面向对象的特性，并以简洁、组合优先的方式实现面向对象：
-  - 对象：结构体（struct）的实例
-  - 类：结构体（struct）
-  - 封装：属性的访问权限通过首字母大小写来通知，首字母大写是公共可以被外部访问的，首字母小写是私有的
-  - 继承：不支持直接继承，但是可以通过结构体嵌套来实现组合
-  - 多态：不支持多态，但是可以通过interface定义方法，不同实例有不同的实现，从而达到多态（和java的接口实现多态是一样的）
+
+### golang的面向对象
+
+golang不是纯粹的面向对象语言，但是支持面向对象的特性，并以简洁、组合优先的方式实现面向对象：
+
+- 对象：结构体（struct）的实例
+- 类：结构体（struct）
+- 封装：属性的访问权限通过首字母大小写来通知，首字母大写是公共可以被外部访问的，首字母小写是私有的
+- 继承：不支持直接继承，但是可以通过结构体嵌套来实现组合
+- 多态：不支持多态，但是可以通过interface定义方法，不同实例有不同的实现，从而达到多态（和java的接口实现多态是一样的）
 
 ## golang基础
 
@@ -487,9 +481,11 @@ addr := uintptr(unsafe.Pointer(&s)) + offset  //获取unsafe.Pointer转换为uin
 p := (*someType)(unsafe.Pointer(addr))  //偏移结果转换为unsafe.Pointer，再转为具体指针类型
 ```
 
-## Slice
+## golang基本类型
 
-### 数组和切片的区别
+### slice
+
+#### 数组和切片的区别
 
 - 数组是固定长度的值类型，而切片是可变长度的引用类型，具体区别是：
   - 数组是固定长度的（`[N]T`）,长度在编译期固定，slice是不带长度的（`[]T`），长度和容量可变
@@ -502,7 +498,7 @@ p := (*someType)(unsafe.Pointer(addr))  //偏移结果转换为unsafe.Pointer，
 
 > `[3]int`和`[4]int`不是同一类型的，因为对于数组类型，长度也是类型的一部分，因此如果有这两个变量，不能相互赋值
 
-### slice的底层数据结构，扩容策略是什么
+#### slice的底层数据结构，扩容策略是什么
 
 - slice是对数组的轻量级抽象，slice自身并不存储数据，而是通过slice header结构，引用底层数组的一部分
 - 切片的底层数据结构可以理解为：
@@ -541,7 +537,7 @@ type slice struct {
 
 > https://juejin.cn/post/7136774425415794719
 
-### 使用数组和slice作为参数的区别，slice作为参数传递有什么问题
+#### 使用数组和slice作为参数的区别，slice作为参数传递有什么问题
 
 - 数组和slice作为函数参数传递时：
   - 都是作为值传递，但是数组会进行数组拷贝，slice会拷贝slice header
@@ -552,7 +548,7 @@ type slice struct {
   - 当多个副本共享底层数组，只要没发生扩容，一个副本修改元素会影响所有的
   - 当切片发生扩容，并超出容量，会创建一个新的底层数组，并拷贝旧的元素，返回新的slice header，因此与旧的slice不共享内存
 
-### 从数组中获取一个相同大小的slice有成本吗
+#### 从数组中获取一个相同大小的slice有成本吗
 
 ```go
 arr := [5]int{1,2,3,4,5}
@@ -568,9 +564,9 @@ slice := arr[:]
   - 生命周期：slice会持有对整个数组的引用，可能影响GC
   - 容量固定：从数组创建的slice容量无法超过原数组（扩容会新建数组）
 
-## map
+### map
 
-### 哪些类型可以作为map的key
+#### 哪些类型可以作为map的key
 
 - golang中map的key必须是可比较的（comparable）
 - 可以作为key的类型有：
@@ -595,7 +591,7 @@ key := []int{1,2,3}
 m[key] = "slice"  //会报错：invalid map key type []int
 ```
 
-### map的底层数据结构（hmap，bucket，解决哈希冲突的方法，负载因子）
+#### map的底层数据结构（hmap，bucket，解决哈希冲突的方法，负载因子）
 
 - map的底层结构是一个hmap结构体：
 
@@ -641,7 +637,7 @@ type bmap struct {
   - 扩容都是渐进式的，扩容期间读操作需要检查新旧两个桶，写操作触发渐进式迁移
 - 因为map的哈希表结构设计动态分配、扩容、溢出桶、迁移等复杂操作，并且这些操作没有加锁，因此并发写时会造成结构不一致，最终导致运行时崩溃（panic）
 
-### 使用map需要注意的点，是否并发安全
+#### 使用map需要注意的点，是否并发安全
 
 - golang的map不是并发安全的，如果有多个goroutine同时对一个map进行读写操作，会导致race condition，程序可能会panic或产生不可预期的结果
 - 使用注意：
@@ -651,7 +647,7 @@ type bmap struct {
   - map的扩容会有性能开销，因此可以先预分配容量
   - map的并发安全问题可以使用sync.Mutex互斥锁或者sync.RWMutex读写锁来解决，或者使用sync.Map
 
-### map中删除一个key，它的内存会释放吗（内存标记与垃圾回收）
+#### map中删除一个key，它的内存会释放吗（内存标记与垃圾回收）
 
 - 如果key-value时直接存储在map中的基本类型（如int、string等），删除后这些内存会标记为可回收
 - 如果value是引用类型，删除key后，指针指向的对象是否释放取决于是否有其他引用
@@ -660,7 +656,7 @@ type bmap struct {
 > map的内部结构不会自动shrink（缩容），因此即使删除了很多元素，map的底层内存结构可能并不会减小
 > 如果想要释放map的内存，需要重新分配一个map或者置为nil
 
-### map为nil和map为空的区别是什么（初始状态和内存占用，对增删改查的影响）
+#### map为nil和map为空的区别是什么（初始状态和内存占用，对增删改查的影响）
 
 - map初始化的区别
   - 使用var声明一个map的值为nil，占用0字节（仅仅是一个nil指针），没有分配任何底层数据结构，不能直接使用
@@ -674,7 +670,7 @@ type bmap struct {
   - 每个bucket可以存储最多8个key-value对
   - 每个bucket是一个包含8个槽位的数据结构
 
-### map的插入过程
+#### map的插入过程
 
 - 前置检查
   - 检查h.flags是否有写标志（flags的值为0x01）
@@ -703,7 +699,7 @@ bucketIndex := hash & bucketMask  //取hash的低B位
   - 如果当前的bucket槽位都满了，则创建新的overflow bucket
   - 在新的bucket插入key-value，将map的count加一，并清除写标志
 
-### 查找的过程
+#### 查找的过程
 
 - 使用类型特定的哈希函数计算key的哈希值
 - 使用哈希值的低B位确定bucket的编号，定位到对应的bucket
@@ -713,7 +709,7 @@ bucketIndex := hash & bucketMask  //取hash的低B位
 - 计算tophash，将hash值的高8位作为tophash，遍历bucket的槽（8个）使用tophash快速过滤，然后再判断key相等，找到则返回value
 - 如果没有找到对应的key，且overflow不为空，则继续遍历overflow指向的下一个bucket
 
-### map的渐进式扩容
+#### map的渐进式扩容
 
 - go的map的渐进式扩容不会一次把所有旧数据迁移到新的buckets中，而是边读写边迁移，避免卡顿
 - 一次性迁移中，如果map很大（百万计），一次迁移要花较长时间，带来明显的延迟
@@ -735,7 +731,7 @@ bucketIndex := hash & bucketMask  //取hash的低B位
 
 > 对于写操作，除了迁移当前的bucket，还会额外迁移下一个连续的未迁移的bucket，来推进迁移的进度
 
-### 如何保证所有的bucket都能被迁移
+#### 如何保证所有的bucket都能被迁移
 
 - 读操作会迁移当前的bucket，而写操作不仅迁移当前的bucket，还会顺序推进nevacute指向的下一个未迁移的bucket
 - 跳跃式推进：
@@ -744,14 +740,14 @@ bucketIndex := hash & bucketMask  //取hash的低B位
   - 每次会迁移当前访问的bucket（可以是任意编号）
   - 以及迁移nevacute指向的bucket，保证顺序覆盖
 
-### 可以对map里的一个元素取地址吗
+#### 可以对map里的一个元素取地址吗
 
 - 不能安全地对map中的元素取地址
 - map是一个动态数据结构，元素在内存中消失或者重新分配：
   - map自动扩容，导致bucket重新分配，因此map元素的地址不是稳定的
   - map中的key/value不一定实际留在某个固定位置，而是可能被复制或移动
 
-### sync.Map是什么，它的锁机制和使用map加锁有区别吗
+#### sync.Map是什么，它的锁机制和使用map加锁有区别吗
 
 sync.Map是go标准库中专门为并发读多写少的场景设计的并发安全的Map，不是简单的使用Mutex包围map，而是采用了分段锁（sharded locking）和无锁优化读
 
@@ -774,14 +770,14 @@ type Map struct {
   - 加锁（mu.Lock()），修改dirty（写操作解锁，但是不会影响只读路径）
   - 如果key原本只在read中命中，会将其标记“已删除”（value有更新），然后复制到dirty
 
-## interface
+### interface
 
-### go语言和鸭子类型的关系
+#### go语言和鸭子类型的关系
 
 - 鸭子类型的核心理念：如果一只鸟走起来像鸭子，叫起来也像鸭子，那它就是鸭子
 - 对于golang就是：一个类型实现了某个接口中定义的所有方法，就可以被视为实现了该接口
 
-### 值接收者和指针接收者的区别，分别在什么时候使用
+#### 值接收者和指针接收者的区别，分别在什么时候使用
 
 - go中接受者（receiver）是方法定义中的一个重要概念，是方法签名中类型名称前面的参数，指定了哪个类型可以调用这个方法
 - 值接收者
@@ -801,7 +797,7 @@ type Map struct {
 > 值类型T方法的方法集，只包含值接收者的方法
 > 指针类型*T的方法集，包含值接收者和指针接收者的所有方法
 
-### iface和eface的区别是什么
+#### iface和eface的区别是什么
 
 - go中的iface和eface是两种不同的接口内部表示结构，主要区别是：
 - eface（empty interface）
@@ -839,7 +835,7 @@ type iface struct {
 }
 ```
 
-### 接口的动态类型和动态值
+#### 接口的动态类型和动态值
 
 - 动态类型和动态值共同构成了接口的运行时表示
 - 动态类型
@@ -851,12 +847,12 @@ type iface struct {
 - 动态类型可能是int、string、struct等类型，动态值可能是具体的int、string、struct实例等值
 - nil接口（只用var声明）的动态类型和动态值都是nil
 
-### 编译器自动检测类型是否实现接口
+#### 编译器自动检测类型是否实现接口
 
 - go编译器会在编译时检查类型是否实现了接口
 - 也可以显示地检查接口实现，`var _ Writer = (*MyFile)(nil)`或者`var _ Writer = MyFile{}`可以检查*MyFile或MyFile是否实现了Writer接口
 
-### 类型转换和断言的区别
+#### 类型转换和断言的区别
 
 - 类型转换是在编译时进行的，用于在已知的类型之间进行转换
   - `T(value)`用于把value转换为类型T
@@ -868,7 +864,7 @@ value, ok := value.(T) //安全断言
 value := value.(T) //不安全断言，失败会panic
 ```
 
-### 如何使用接口实现多态
+#### 如何使用接口实现多态
 
 ```go
 type Animal interface {
@@ -892,7 +888,7 @@ func main() {
 }
 ```
 
-### go的接口的特点
+#### go的接口的特点
 
 - 隐式实现：golang的接口实现是隐式的，不需要显示声明实现某个接口，只要类型实现了接口中定义的所有方法，就自动实现了该接口
 - Duck Typing：遵循“如果它走起来像鸭子，叫起来像鸭子，那它就是鸭子”的原则，关注的是行为而不是类型声明
@@ -901,17 +897,160 @@ func main() {
 - 动态类型：接口在运行时可以持有任何实现了该接口的具体类型
 - 接口比较：接口的比较基于动态类型和动态值，且值的类型必须可比较，当动态类型和动态值相等时接口相等
 
-### 接口的构造过程是怎样的
+#### 接口的构造过程是怎样的
 
-### 接口转换的原理
+#### 接口转换的原理
 
-## go runtime
+### channel
 
-### go runtime是什么
+#### CSP模型是什么，golang中如何使用的
 
-go的运行时系统（runtime）是go的核心组成部分，负责管理goroutine的调度（GMP）、垃圾回收、内存分配、系统调用等底层操作
+- CSP（Communicationg Sequential Processes）是一种并发编程模型，主要描述多个独立进程之间如何通过通信进行协作，其思想是进程之间不共享内存，而是通过通信来共享信息
+- CSP模型的核心概念：
+  - 进程：独立执行的逻辑单元，类似goroutine、线程等
+  - 通道：进程之间通信的媒介，允许发送/接收数据
+  - 通信：进程之间通过通道发送或接收数据，实现同步与协作
+- CSP模型的优点：
+  - 没有共享内存，避免了传统共享内存并发中的锁竞争和数据一致性问题
+  - 模型简答清晰，并发实体只需要处理自己的逻辑和通信协议，不用关注全局状态和锁机制
+  - CSP提供了可以形式化建模的框架，可以进行并发系统的验证，如检测是否可能发生死锁和通信错误
+  - 便于测试和推理
+  - 易于扩展和维护
+  - 支持形式化验证
+- CSP模型的缺点：
+  - 通信通常是同步阻塞的，容易出现性能瓶颈
+  - 如果通信顺序不当，仍然可能出现死锁
+  - 如果多个进程频繁共享大数据，传输效率低
 
-### 使用goroutine的注意事项
+#### channel的底层原理
+
+> https://juejin.cn/post/6844903821349502990
+
+- 代码中创建的`ch := make(chan int)`中，`ch`是一个引用类型，其底层的结构体是`runtime.hchan`（heap channel，分配在堆上），主要包括：
+  - `qcount`：当前缓冲区元素的数量
+  - `datasiz`：缓冲区的容量
+  - `buf`：用于有缓冲的channel，用来存储缓冲数据，是循环数组
+  - `elemsize`：每个元素的大小
+  - `close`：标识channel是否已经关闭（1）
+  - `elemtype`：元素类型指针，管理GC数据
+  - `sendx`/`recvx`：发送/接收时使用的`buf`数组索引，用于实现环形缓冲区
+  - `recvq`/`sendq`：分别是接收和发送goroutine的等待队列（阻塞在channel上的协程）
+  - `lock`：互斥锁，保护channel的并发安全性
+- 缓冲机制：环形队列
+  - 发送数据时，将数据放入`buf[sendx]`，然后`sendx=(sendx+1)%dataqsiz`
+  - 接收数据时，从`buf[recvx]`取出数据，然后`recvx=(recvx+1)%dataqsiz`
+- 无缓冲channel：dataqsiz为0，所有的发送必须等待接收，即同步channel
+- 等待队列机制：阻塞协程
+  - `recvq`和`sendq`是链表结构（waitq）
+  - 如果缓冲区满了，发送协程就会被挂入`sendq`
+  - 如果缓冲区空了，接收协程就会被挂入`recvq`
+
+#### channel是否线程安全，锁用在什么地方
+
+- channel是并发安全的，可以使用多个goroutine同时对同一个chan进行读写，且不用额外加锁
+- chan加锁的情况（slow-path）
+  - 缓冲区满的时候会加锁阻塞发送
+  - 缓冲区为空的时候会加锁阻塞接收
+  - 多个发送者或者接收者同时操作会加锁
+  - channel关闭会加锁，确保没有写入冲突
+- 不加锁的情况（fast-path）
+  - 无缓冲的channel，且只有一个发送者和接收者
+  - 有缓冲的channel，在缓冲没满时发送
+  - 有缓冲的channel，在缓冲非空的时候接收
+  - channel只在一个goroutine中使用
+- channel会先尝试走fast-path：
+  - 是否有可用缓冲
+  - 是否有等待的goroutine
+  - 是否数据可以直接交换
+- fast-path不满足才会进入slow-path
+
+#### nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎么样
+
+- channel为nil（`var ch chan int`）：
+  - 发送数据会永远阻塞
+  - 接收数据会永远阻塞
+  - 关闭会导致panic
+- 已经关闭的channel：
+  - 发送会导致panic
+  - 接收会立即返回零值和ok=false
+  - 再次关闭会panic
+- 有数据的channel：
+  - 发送成功或者阻塞
+  - 读取成功或者阻塞
+  - 可以正常关闭
+
+#### 向channel发送数据和读取数据的流程是什么
+
+- 发送数据的流程
+  1. 判断channel是否为nil
+  2. fast-path
+     - 缓冲区未满，写入缓冲，返回
+     - 无缓冲且有等待的接收者，唤醒接收者
+  3. slow-path
+     - 加锁
+     - 检查channel close
+     - 检查recvq是否匹配，是则传值，唤醒接收者
+     - 否则判断阻塞，如果阻塞则把当前goroutine封装为sudog，挂入sendq，挂起调度
+     - 解锁
+- 读取数据的流程
+  1. 判断channel是否为nil
+  2. fast-path
+     - 缓冲区非空，从buf取值
+     - 无缓冲且sendq非空，与发送者配对，直接拿值
+  3. slow-path
+     - 加锁
+     - 检查closed且无数据，返回零值和ok=false
+     - 检查sendq，有则配对拿值
+     - 缓冲区非空，从buf拿值
+     - 否则判断如果允许阻塞，挂入recvq，挂起goroutine
+     - 解锁
+
+#### channel在什么情况下会引起资源泄露
+
+- channel阻塞，goroutine被永久挂起（发送的数据没有接收者）
+- 接收端永远等待数据，导致goroutine阻塞
+- 未关闭的channel导致下游goroutine阻塞
+- select阻塞在没有发送或者关闭的channel
+- 无缓冲的channel在发送或接收异常退出（如主gorouotine退出，子goroutine永远挂起）
+
+#### select的原理和一些特性（项目中怎么使用的select）
+
+- select是golang提供的一种多路复用机制，用于同时监听多个channel的读写操作，类似于switch，是专门为channel设计的，可以使用select同时监听多个channel的读写操作，一个某个操作可以继续执行，就会执行响应的分支
+- select的规则：
+  - 并发监听多个channel，select会阻塞直到某个case准备好，如果有多个case可以执行，会随机选择一个
+  - 如果所有的case都没准备好，但存在default，会立即执行default，可以用来实现非阻塞的操作
+  - 添加一个case使用time.After可以实现超时控制
+
+#### 有缓存的channel和无缓存的channel
+
+#### channel的读写特性
+
+#### channel的底层实现原理（数据结构）
+
+## golang并发
+
+### 并行与并发
+
+- 并发（Concurrency）
+  - 指在同一时间段内处理多个任务
+  - 任务之间可以交替执行，但不一定同时进行
+  - 通过时间片轮转等方式实现
+  - 适用于I/O密集型任务（主要是在等待I/O，CPU可以在等待期间切换到其他任务，提高吞吐量）
+
+- 并行（Parallelism）
+  - 指在同一时间点上同时执行多个任务
+  - 需要多核CPU支持
+  - 适用于CPU密集型任务（持续占用CPU，没有等待）
+
+### goroutine
+
+goroutine是go语言中轻量级的线程，可以理解为用户态的线程，由go运行时管理
+
+协程是执行并发任务的基本单位，可以在单个线程中同时运行多个goroutine
+
+goroutine的创建和销毁开销很小，适合高并发场景
+
+### goroutine注意事项
 
 - 内存泄漏和生命周期管理：goroutine不会被自动回收，如果创建的goroutine没有正常退出，会导致内存泄漏，因此
   - 确保goroutine有明确的退出条件
@@ -929,6 +1068,60 @@ go的运行时系统（runtime）是go的核心组成部分，负责管理gorout
 - 正确使用waitgroup：等待goroutine完成时要正确使用sync.WaitGroup
 - 避免闭包的陷阱：在for-range中启动goroutine需要注意变量捕获
 - 使用select处理多个channel，避免goroutine阻塞
+
+### sync包
+
+- sync.WaitGroup
+  - 用于等待一组goroutine完成
+  - 通过Add、Done和Wait方法来管理
+  - 适用于并发任务的同步
+
+- sync.Mutex
+- sync.RWMutex
+- sync.Once
+- sync.Lock
+- sync.Map
+- sync.Cond
+- sync.Pool
+
+- sync/atomic
+  - 提供原子操作，适用于无锁编程
+  - 常用的原子操作有Load、Store、Add、CompareAndSwap等
+- atomic.value
+  - 提供原子加载和存储任意类型的值
+  - 适用于需要频繁读写共享数据的场景
+
+### channel和select
+
+详见[channel](#channel)和[select](#select的原理和一些特性项目中怎么使用的select)章节
+
+### context
+
+- go中context是用来在多个goroutine之间传递取消信号、超时控制、截止时间和请求范围内的共享数据的一种标准机制
+- 多个goroutine处理同一个请求时，就需要：
+  - 统一取消所有关联的goroutine（如请求超时或者用户取消）
+  - 传递截至时间（deadline）
+  - 传递请求相关的元数据（如身份认证信息、Trace ID）
+  - 避免goroutine泄露（内存泄漏）
+- Context是一个interface，包含以下方法：
+  - `Deadline() (deadline time.Time, ok bool)`返回截至时间
+  - `Done() <-chan struct{}`返回一个channel，关闭代表取消信号
+  - `Err() error `取消原因
+  - `Value(key interface{}) interface{}`传递的键值对数据
+
+- 使用场景
+  - 控制HTTP请求的生命周期
+  - 数据库查询超时控制
+  - 微服务RPC通信的trace和取消传递
+  - 并发任务取消
+  - 信号相应和服务优雅关闭
+- 常用方法：
+  - `context.Background()`生成空的用不取消的context，通常作为顶层context
+  - `context.TODO()`临时使用的context
+  - `context.WithCancel(parent)`可取消的context
+  - `context.WithTimeout(parent, timeout)`带超时的context
+  - `context.WithDeadline(parent, deadline)`带截止时间的context
+  - `context.WithValue(parent, key, val)`带键值对数据的context
 
 ## GMP
 
@@ -1014,177 +1207,14 @@ func main() {
 - select中的case阻塞
   - 当select中的所有channel都无法进行时，select会阻塞
 
-## channel
+## 协程池
 
-### CSP模型是什么，golang中如何使用的
+https://golangstar.cn/go_series/go_advanced/goroutine_pool.html
 
-- CSP（Communicationg Sequential Processes）是一种并发编程模型，主要描述多个独立进程之间如何通过通信进行协作，其思想是进程之间不共享内存，而是通过通信来共享信息
-- CSP模型的核心概念：
-  - 进程：独立执行的逻辑单元，类似goroutine、线程等
-  - 通道：进程之间通信的媒介，允许发送/接收数据
-  - 通信：进程之间通过通道发送或接收数据，实现同步与协作
-- CSP模型的优点：
-  - 没有共享内存，避免了传统共享内存并发中的锁竞争和数据一致性问题
-  - 模型简答清晰，并发实体只需要处理自己的逻辑和通信协议，不用关注全局状态和锁机制
-  - CSP提供了可以形式化建模的框架，可以进行并发系统的验证，如检测是否可能发生死锁和通信错误
-  - 便于测试和推理
-  - 易于扩展和维护
-  - 支持形式化验证
-- CSP模型的缺点：
-  - 通信通常是同步阻塞的，容易出现性能瓶颈
-  - 如果通信顺序不当，仍然可能出现死锁
-  - 如果多个进程频繁共享大数据，传输效率低
+## 反射
 
-### channel的底层原理
+https://golangstar.cn/go_series/go_advanced/reflect.html
 
-> https://juejin.cn/post/6844903821349502990
+## 范型
 
-- 代码中创建的`ch := make(chan int)`中，`ch`是一个引用类型，其底层的结构体是`runtime.hchan`（heap channel，分配在堆上），主要包括：
-  - `qcount`：当前缓冲区元素的数量
-  - `datasiz`：缓冲区的容量
-  - `buf`：用于有缓冲的channel，用来存储缓冲数据，是循环数组
-  - `elemsize`：每个元素的大小
-  - `close`：标识channel是否已经关闭（1）
-  - `elemtype`：元素类型指针，管理GC数据
-  - `sendx`/`recvx`：发送/接收时使用的`buf`数组索引，用于实现环形缓冲区
-  - `recvq`/`sendq`：分别是接收和发送goroutine的等待队列（阻塞在channel上的协程）
-  - `lock`：互斥锁，保护channel的并发安全性
-- 缓冲机制：环形队列
-  - 发送数据时，将数据放入`buf[sendx]`，然后`sendx=(sendx+1)%dataqsiz`
-  - 接收数据时，从`buf[recvx]`取出数据，然后`recvx=(recvx+1)%dataqsiz`
-- 无缓冲channel：dataqsiz为0，所有的发送必须等待接收，即同步channel
-- 等待队列机制：阻塞协程
-  - `recvq`和`sendq`是链表结构（waitq）
-  - 如果缓冲区满了，发送协程就会被挂入`sendq`
-  - 如果缓冲区空了，接收协程就会被挂入`recvq`
-
-### channel是否线程安全，锁用在什么地方
-
-- channel是并发安全的，可以使用多个goroutine同时对同一个chan进行读写，且不用额外加锁
-- chan加锁的情况（slow-path）
-  - 缓冲区满的时候会加锁阻塞发送
-  - 缓冲区为空的时候会加锁阻塞接收
-  - 多个发送者或者接收者同时操作会加锁
-  - channel关闭会加锁，确保没有写入冲突
-- 不加锁的情况（fast-path）
-  - 无缓冲的channel，且只有一个发送者和接收者
-  - 有缓冲的channel，在缓冲没满时发送
-  - 有缓冲的channel，在缓冲非空的时候接收
-  - channel只在一个goroutine中使用
-- channel会先尝试走fast-path：
-  - 是否有可用缓冲
-  - 是否有等待的goroutine
-  - 是否数据可以直接交换
-- fast-path不满足才会进入slow-path
-
-### nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎么样
-
-- channel为nil（`var ch chan int`）：
-  - 发送数据会永远阻塞
-  - 接收数据会永远阻塞
-  - 关闭会导致panic
-- 已经关闭的channel：
-  - 发送会导致panic
-  - 接收会立即返回零值和ok=false
-  - 再次关闭会panic
-- 有数据的channel：
-  - 发送成功或者阻塞
-  - 读取成功或者阻塞
-  - 可以正常关闭
-
-### 向channel发送数据和读取数据的流程是什么
-
-- 发送数据的流程
-  1. 判断channel是否为nil
-  2. fast-path
-     - 缓冲区未满，写入缓冲，返回
-     - 无缓冲且有等待的接收者，唤醒接收者
-  3. slow-path
-     - 加锁
-     - 检查channel close
-     - 检查recvq是否匹配，是则传值，唤醒接收者
-     - 否则判断阻塞，如果阻塞则把当前goroutine封装为sudog，挂入sendq，挂起调度
-     - 解锁
-- 读取数据的流程
-  1. 判断channel是否为nil
-  2. fast-path
-     - 缓冲区非空，从buf取值
-     - 无缓冲且sendq非空，与发送者配对，直接拿值
-  3. slow-path
-     - 加锁
-     - 检查closed且无数据，返回零值和ok=false
-     - 检查sendq，有则配对拿值
-     - 缓冲区非空，从buf拿值
-     - 否则判断如果允许阻塞，挂入recvq，挂起goroutine
-     - 解锁
-
-### channel在什么情况下会引起资源泄露
-
-- channel阻塞，goroutine被永久挂起（发送的数据没有接收者）
-- 接收端永远等待数据，导致goroutine阻塞
-- 未关闭的channel导致下游goroutine阻塞
-- select阻塞在没有发送或者关闭的channel
-- 无缓冲的channel在发送或接收异常退出（如主gorouotine退出，子goroutine永远挂起）
-
-### select的原理和一些特性（项目中怎么使用的select）
-
-- select是一个专门用于处理多个channel操作的控制结构，类似于switch，是专门为channel设计的，可以使用select同时监听多个channel的读写操作，一个某个操作可以继续执行，就会执行响应的分支
-- select的规则：
-  - 并发监听多个channel，select会阻塞直到某个case准备好，如果有多个case可以执行，会随机选择一个
-  - 如果所有的case都没准备好，但存在default，会立即执行default，可以用来实现非阻塞的操作
-  - 添加一个case使用time.After可以实现超时控制
-
-### 有缓存的channel和无缓存的channel
-
-### channel的读写特性
-
-### channel的底层实现原理（数据结构）
-
-## context
-
-### context是什么，为什么需要context，context的结构是什么
-
-- go中context是用来在多个goroutine之间传递取消信号、超时控制、截止时间和请求范围内的共享数据的一种标准机制
-- 多个goroutine处理同一个请求时，就需要：
-  - 统一取消所有关联的goroutine（如请求超时或者用户取消）
-  - 传递截至时间（deadline）
-  - 传递请求相关的元数据（如身份认证信息、Trace ID）
-  - 避免goroutine泄露（内存泄漏）
-- Context是一个interface，包含以下方法：
-  - `Deadline() (deadline time.Time, ok bool)`返回截至时间
-  - `Done() <-chan struct{}`返回一个channel，关闭代表取消信号
-  - `Err() error `取消原因
-  - `Value(key interface{}) interface{}`传递的键值对数据
-
-### context有哪些使用场景和用途，有哪些常用的方法
-
-- 使用场景
-  - 控制HTTP请求的生命周期
-  - 数据库查询超时控制
-  - 微服务RPC通信的trace和取消传递
-  - 并发任务取消
-  - 信号相应和服务优雅关闭
-- 常用方法：
-  - `context.Background()`生成空的用不取消的context，通常作为顶层context
-  - `context.TODO()`临时使用的context
-  - `context.WithCancel(parent)`可取消的context
-  - `context.WithTimeout(parent, timeout)`带超时的context
-  - `context.WithDeadline(parent, deadline)`带截止时间的context
-  - `context.WithValue(parent, key, val)`带键值对数据的context
-
-## 内存分配与垃圾回收
-
-### 垃圾识别算法
-
-- 引用计数法
-- 可达性分析法
-
-### 垃圾清理算法
-
-- 标记清除法
-- 标记复制法
-- 标记压缩法
-
-## 内存优化
-
-## 性能分析
+https://golangstar.cn/go_series/go_advanced/generics.html
