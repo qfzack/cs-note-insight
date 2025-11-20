@@ -292,35 +292,92 @@ std::cout << que.front(); //访问队头元素
 std::cout << que.size(); //获取队列大小
 ```
 
-## 函数
+## 标准库方法
+
+### iostream
+
+- cin
+- cout
+- clog
+- cerr
 
 ```cpp
-// 返回类型 函数名(参数类型 参数名) {
-//     // 函数体
-// }
+#include <iostream>
 
-int add(int a, int b = 0) { // b有默认值0
-    return a + b;
+int x;
+std::cin >> x; //输入
+std::cout << x << std::endl; //输出
+std::clog << "Log message" << std::endl; //日志输出
+std::cerr << "Error message" << std::endl; //错误输出
+```
+
+### algorithm
+
+- sort
+- reverse
+- for_each
+- find
+- max
+- min
+
+```cpp
+#include <algorithm>
+#include <vector>
+std::vector<int> vec = {3, 1, 4, 1, 5};
+
+std::sort(vec.begin(), vec.end()); //排序
+std::reverse(vec.begin(), vec.end()); //反转
+std::for_each(vec.begin(), vec.end(), [](int v) {
+    std::cout << v << " ";
+}); //for-each 循环遍历
+auto it = std::find(vec.begin(), vec.end(), 4); //查找元素
+
+int maxVal = std::max(a, b); //获取最大值
+int minVal = std::min(a, b); //获取最小值
+```
+
+### cmath
+
+- sqrt
+- pow
+- round
+- floor
+- ceil
+- abs
+
+```cpp
+#include <cmath>
+
+double result = std::sqrt(16.0); //平方根
+double power = std::pow(2.0, 3.0); //幂
+double rounded = std::round(3.6); //四舍五入
+double floored = std::floor(3.6); //向下取整
+double ceiled = std::ceil(3.2); //向上取整
+double absolute = std::abs(-5.0); //绝对值
+```
+
+### fstream
+
+- ifstream
+- ofstream
+
+```cpp
+#include <fstream>
+
+std::ofstream outFile("output.txt"); //写文件
+outFile << "Hello, file!" << std::endl;
+outFile.close();
+
+std::ifstream inFile("input.txt"); //读文件
+std::string line;
+while (std::getline(inFile, line)) {
+    std::cout << line << std::endl;
 }
+inFile.close();
 ```
 
-- Lambda表达式
 
-```cpp
-// [捕获列表](参数列表) -> 返回类型 { 函数体 };
-auto sum = [](int a, int b) -> int {
-    return a + b;
-};
-
-// 捕获列表是指定外部变量如何在Lambda中使用
-int x = 10;
-auto lambda1 = [x](int y) { return x + y; }; //按值捕获x
-auto lambda2 = [&x](int y) { return x + y; }; //按引用捕获x
-auto lambda3 = [=](int y) { return x + y; }; //按值捕获所有外部变量
-auto lambda4 = [&](int y) { return x + y; }; //按引用捕获所有外部变量
-```
-
-### 指针
+## 指针
 
 指针和引用的用法：
 
@@ -351,3 +408,310 @@ int* createArray(int size) {
     return new int[size]; //动态分配数组
 }
 ```
+
+## 函数
+
+### 函数定义
+
+```cpp
+// 返回类型 函数名(参数类型 参数名) {
+//     // 函数体
+// }
+
+int add(int a, int b = 0) { // b有默认值0
+    return a + b;
+}
+```
+
+- Lambda表达式
+
+```cpp
+// [捕获列表](参数列表) -> 返回类型 { 函数体 };
+auto sum = [](int a, int b) -> int {
+    return a + b;
+};
+
+// 捕获列表是指定外部变量如何在Lambda中使用
+int x = 10;
+auto lambda1 = [x](int y) { return x + y; }; //按值捕获x
+auto lambda2 = [&x](int y) { return x + y; }; //按引用捕获x
+auto lambda3 = [=](int y) { return x + y; }; //按值捕获所有外部变量
+auto lambda4 = [&](int y) { return x + y; }; //按引用捕获所有外部变量
+```
+
+### 函数类型
+
+- 构造函数
+  - 使用场景: 当创建类的对象时，会自动调用构造函数来初始化对象的成员变量
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        MyClass() {
+            // 构造函数的实现
+        }
+    };
+    MyClass obj; // 创建对象时调用构造函数
+    ```
+- 拷贝构造函数
+  - 使用场景: 当一个对象以值传递的方式传递给函数，或从函数返回一个对象时，会调用拷贝构造函数来创建一个新的对象副本
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        MyClass() {
+            // 构造函数的实现
+        }
+        MyClass(const MyClass& other) {
+            // 拷贝构造函数的实现
+        }
+    };
+
+    void func(MyClass obj) { // 传值调用，会调用拷贝构造函数
+        // ...
+    }
+
+    MyClass createObject() {
+        MyClass obj;
+        return obj; // 返回对象时，会调用拷贝构造函数
+    }
+    ```
+- 移动构造函数
+  - 使用场景: 当一个对象以右值引用的方式传递给函数，或从函数返回一个临时对象时，会调用移动构造函数来“窃取”资源，而不是复制资源，从而提高性能
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        MyClass() {
+            // 构造函数的实现
+        }
+        MyClass(MyClass&& other) noexcept {
+            // 移动构造函数的实现
+        }
+    };
+    ```
+- 析构函数
+  - 使用场景: 当对象生命周期结束时，会自动调用析构函数来释放对象占用的资源
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        ~MyClass() {
+            // 析构函数的实现
+        }
+    };
+    ```
+- 成员函数
+  - 使用场景: 定义类的行为，通过成员函数操作对象的状态
+  - 例如:
+    ```cpp
+    class MyClass {
+    private:
+        int value;
+    public:
+        void setValue(int val) { value = val; } // 成员函数
+        int getValue() const { return value; } // 成员函数
+    };
+    ```
+- 静态成员函数
+  - 使用场景: 定义与类相关但不依赖于具体对象的行为，可以通过类名直接调用
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        static int staticVar; // 静态成员变量
+        static void staticFunction() { // 静态成员函数
+            // 静态函数的实现
+        }
+    };
+
+    MyClass::staticVar = 10; // 访问静态成员变量
+    MyClass::staticFunction(); // 调用静态成员函数
+    ```
+- 运算符重载函数
+  - 使用场景: 当需要自定义类对象之间的运算符行为时，可以重载运算符函数
+  - 例如:
+    ```cpp
+    class MyClass {
+    private:
+        int value;
+    public:
+        MyClass(int val) : value(val) {}
+        MyClass operator+(const MyClass& other) { // 重载加法运算符
+            return MyClass(this->value + other.value);
+        }
+    };
+
+    MyClass obj1(10);
+    MyClass obj2(20);
+    MyClass obj3 = obj1 + obj2; // 使用重载的加法
+    ```
+- 友元函数: 可以访问类的私有成员的函数
+  - 使用场景: 当需要让一个非成员函数访问类的私有成员时，可以将该函数声明为类的友元函数
+  - 例如:
+    ```cpp
+    class MyClass {
+    private:
+        int privateVar;
+    public:
+        MyClass(int val) : privateVar(val) {}
+        friend void friendFunction(MyClass& obj); // 声明友元函数
+    };
+
+    void friendFunction(MyClass& obj) {
+        // 访问 MyClass 的私有成员
+        std::cout << "Private variable: " << obj.privateVar << std::endl;
+    }
+    ```
+- 内联函数: 提高性能的小型函数
+  - 使用场景: 当函数体非常小且频繁调用时，可以将其定义为内联函数，以减少函数调用的开销，**类内定义的成员函数默认会被编译器视为内联函数**
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        inline int getValue() const { return value; } // 内联函数
+    private:
+        int value;
+    };
+    ```
+- 虚函数: 支持多态的成员函数
+  - 使用场景: 当需要通过基类指针或引用调用派生类的重写函数时，使用虚函数实现运行时多态（父类引用指向子类对象时，调用子类重写的方法）
+  - 例如:
+    ```cpp
+    class Base {
+    public:
+        virtual void show() { // 虚函数
+            std::cout << "Base class show function" << std::endl;
+        }
+    };
+    class Derived : public Base {
+    public:
+        void show() override { // 重写虚函数
+            std::cout << "Derived class show function" << std::endl;
+        }
+    };
+- 纯虚函数: 抽象类中的虚函数, 没有实现
+  - 使用场景: 当需要定义一个接口类，强制派生类实现某些函数时，使用纯虚函数
+  - 例如:
+    ```cpp
+    class AbstractBase {
+    public:
+        virtual void pureVirtualFunction() = 0; // 纯虚函数
+    };
+    class ConcreteDerived : public AbstractBase {
+    public:
+        void pureVirtualFunction() override { // 实现纯虚函数
+            std::cout << "ConcreteDerived implementation" << std::endl;
+        }
+    };
+    ```
+
+## 结构体和类
+
+### 结构体struct
+
+- 主要用于组合不同类型的数据
+- 默认成员访问权限为**public**
+- 可以有方法、构造函数和析构函数
+
+```cpp
+struct Point {
+    int var; //成员变量
+    void setVar(int val) { var = val; } //公有成员函数
+private:
+    void privateFunc() {} //私有成员函数
+};
+
+// struct的继承
+struct ColoredPoint : public Point {
+    std::string color; //新增成员变量
+};
+```
+
+### 类class
+
+- 用于面向对象编程，封装数据和行为
+- 默认成员访问权限为**private**
+- 可以继承，支持多态
+
+```cpp
+class MyClass {
+private:
+    int privateVar; //私有成员变量
+public:
+    MyClass(int val) : privateVar(val) {} //构造函数
+    MyClass(const MyClass& other) : privateVar(other.privateVar) {} //拷贝构造函数
+    ~MyClass() {} // 析构函数
+    int getVar() const { return privateVar; } //公有成员函数
+    void setVar(int val) { privateVar = val; } //公有成员函数
+};
+
+// class的继承
+class DerivedClass : public MyClass {
+public:
+    DerivedClass(int val) : MyClass(val) {} //调用基类构造函数
+};
+```
+
+> struct和class的主要区别在于默认访问权限不同，struct默认public，class默认private，其他方面基本相同
+
+### 访问修饰符
+
+- public: 公有成员, 可在类外访问
+- private: 私有成员, 只能在类内访问
+- protected: 受保护成员, 可在类内和派生类中访问
+
+| 访问范围   | public | protected | private |
+|-----------|--------|-----------|---------|
+| 同一个类   | yes    | yes       | yes     |
+| 派生类     | yes    | yes       | no      |
+| 外部的类   | yes    | no        | no      |
+
+### 继承规则
+
+- 公有继承 (public): 基类的public和protected成员在派生类中保持不变
+  - 例如: `class Derived : public Base { };`
+- 保护继承 (protected): 基类的public和protected成员在派生类中变为protected
+  - 例如: `class Derived : protected Base { };`
+- 私有继承 (private): 基类的public和protected成员在派生类中变为private
+  - 例如: `class Derived : private Base { };`
+- 多重继承: 一个类可以继承多个基类
+  - 例如: `class Derived : public Base1, protected Base2 { };`
+
+### 运算符和方法重载
+
+- 运算符重载: 自定义类对象之间的运算符行为
+  - 例如:
+    ```cpp
+    class MyClass {
+    private:
+        int value;
+    public:
+        MyClass(int val) : value(val) {}
+        MyClass operator+(const MyClass& other) { // 重载加法运算符
+            return MyClass(this->value + other.value);
+        }
+    };
+    MyClass obj1(10);
+    MyClass obj2(20);
+    MyClass obj3 = obj1 + obj2; // 使用重载的加法
+    ```
+
+- 方法重载: 同一类中定义多个同名但参数不同的方法，包括参数类型、数量或顺序不同
+  - 例如:
+    ```cpp
+    class MyClass {
+    public:
+        void display(int a) {
+            std::cout << "Integer: " << a << std::endl;
+        }
+        void display(double b) {
+            std::cout << "Double: " << b << std::endl;
+        }
+    };
+    MyClass obj;
+    obj.display(10);    // 调用第一个 display 方法
+    obj.display(3.14);  // 调用第二个 display 方法
+    ```
+
+
