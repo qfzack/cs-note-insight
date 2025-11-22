@@ -995,4 +995,58 @@ CMake是目前最流行的跨平台构建系统生成工具，通过CMakeLists.t
 
 CMake提供的方法：
 
-- TODO
+- 指定最低版本要求
+  
+    ```cmake
+    cmake_minimum_required(VERSION 3.20)
+    ```
+- 定义项目名称和编程语言
+  
+    ```cmake
+    project(MyApp CXX) # 定义C++项目
+    ```
+- 执行要生成的可执行文件和其源文件
+  
+    ```cmake
+    # add_executable(<target> <source_files> ...)
+    add_executable(app main.cpp foo.cpp)
+    ```
+- 创建一个库及其源文件
+
+    ```cmake
+    add_library(mylib STATIC lib.cpp) # 静态库
+    add_library(mylib SHARED lib.cpp) # 动态库
+    ```
+- 链接目标文件与其他库
+  - 作用是将指定的库文件链接到目标文件中，使得目标文件可以使用这些库中的函数和资源
+
+    ```cmake
+    target_link_libraries(app mylib pthread)
+    ```
+- 添加头文件搜索路径
+  - 作用是告诉编译器在指定的目录中查找头文件，以便在源代码中使用`#include`指令包含这些头文件
+
+    ```cmake
+    include_directories(<dirs> ...)
+    ```
+- 设置变量的值
+
+    ```cmake
+    set(VAR_NAME value)
+    ```
+- 安装目标文件和库
+
+    ```cmake
+    install(TARGETS app DESTINATION bin) # 安装可执行文件到bin目录
+    install(TARGETS mylib DESTINATION lib) # 安装库文件到lib目录
+    install(FILES foo.h DESTINATION include) # 安装头文件到include目录
+    ```
+- 条件语句
+
+    ```cmake
+    if(CONDITION)
+        # 条件为真时执行的命令
+    else()
+        # 条件为假时执行的命令
+    endif()
+    ```
