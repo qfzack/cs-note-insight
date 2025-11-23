@@ -106,7 +106,7 @@ g++ hello.cpp -o hello
 
 > 此外还可以算上类型别名、模板类型、auto和decltype推导类型
 
-## 常用数据结构
+## 常用容器
 
 ### 数组array
 
@@ -184,6 +184,7 @@ std::vector<int> vec = {1, 2, 3}; //创建动态数组
 std::vector<std::vector<int>> matrix = {{1, 2, 3}, {4, 5, 6}}; //二维动态数组
 
 vec.push_back(4); //添加元素到末尾
+vec.emplace_back(5); // 原地构造元素，效率更高
 vec.pop_back(); //删除最后一个元素
 std::cout << vec.size(); //获取大小
 vec.clear(); //清空动态数组
@@ -216,6 +217,22 @@ std::sort(vec.begin(), vec.end(), std::greater<int>());
 std::sort(vec.begin(), vec.end(), [](int a, int b) {
     return a > b; // 降序排序
 });
+```
+
+### 双向链表list
+
+```cpp
+std::list<int> lst; //创建双向链表
+lst.push_back(1); //在末尾添加元素
+lst.push_front(0); //在开头添加元素
+lst.pop_back(); //删除末尾元素
+lst.pop_front(); //删除开头元素
+std::cout << lst.size(); //获取大小
+
+//访问元素（只能通过迭代器访问）
+for (const int& val : lst) {
+    std::cout << val << " ";
+}
 ```
 
 ### 哈希表unordered_map
@@ -292,6 +309,166 @@ std::cout << que.front(); //访问队头元素
 std::cout << que.size(); //获取队列大小
 ```
 
+## 容器方法
+
+C++ STL容器有一些通用且常用的方法，涵盖vector/string/list/map/set/unordered_map等
+
+有些方法是多态实现，因此会有不同的参数
+
+### 容量
+
+- size
+  - 获取容器大小
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    size_t size = vec.size(); // size = 3
+    ```
+
+- empty
+  - 检查容器是否为空
+
+    ```cpp
+    std::vector<int> vec;
+    bool isEmpty = vec.empty(); // isEmpty = true
+    ```
+
+- capacity
+  - 获取容器容量（仅适用于vector/string）
+
+    ```cpp
+    std::vector<int> vec;
+    size_t cap = vec.capacity(); // 获取当前容量
+    ```
+
+### 访问元素
+
+- at
+  - 访问指定索引的元素，带边界检查
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    int val = vec.at(1); // val = 2
+    ```
+
+- front
+  - 访问容器的第一个元素
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    int first = vec.front(); // first = 1
+    ```
+
+- back
+  - 访问容器的最后一个元素
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    int last = vec.back(); // last = 3
+    ```
+
+### 修改元素
+
+- push_back
+  - 在容器末尾添加元素（适用于vector/list/string）
+
+    ```cpp
+    std::vector<int> vec;
+    vec.push_back(1); // vec = {1}
+    ```
+
+- emplace_back
+  - 在容器末尾原地构造元素（适用于vector/list/string）
+
+    ```cpp
+    std::vector<std::pair<int, int>> vec;
+    vec.emplace_back(1, 2); // vec = {(1, 2)}
+    ```
+
+- push_front
+  - 在容器开头添加元素（适用于list/deque）
+
+    ```cpp
+    std::list<int> lst;
+    lst.push_front(1); // lst = {1}
+    ```
+
+- emplace_front
+  - 在容器开头原地构造元素（适用于list/deque）
+
+    ```cpp
+    std::list<std::pair<int, int>> lst;
+    lst.emplace_front(1, 2); // lst = {(1, 2)}
+    ```
+
+- insert
+  - 在指定位置插入元素，省略位置表示在末尾插入
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    vec.insert(vec.begin() + 1, 10); // vec = {1, 10, 2, 3}
+    ```
+
+- emplace
+  - 在指定位置原地构造元素
+
+    ```cpp
+    std::vector<std::pair<int, int>> vec;
+    vec.emplace(vec.begin(), 1, 2); // vec = {(1, 2)}
+    ```
+
+### 查找
+
+- find
+  - 查找元素，返回迭代器
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    auto it = std::find(vec.begin(), vec.end(), 2);
+    if (it != vec.end()) {
+        // 找到元素
+    }
+    ```
+
+- count
+  - 统计元素出现次数（适用于set/map/unordered_set/unordered_map）
+
+    ```cpp
+    std::unordered_set<int> hashset = {1, 2, 3, 2};
+    size_t cnt = hashset.count(2); // cnt = 1
+    ```
+
+### 其他
+
+- swap
+  - 交换两个容器的内容
+
+    ```cpp
+    std::vector<int> vec1 = {1, 2, 3};
+    std::vector<int> vec2 = {4, 5, 6};
+    vec1.swap(vec2); // 交换vec1和vec2的内容
+    ```
+
+- begin / end
+  - 获取容器的起始和结束迭代器
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    for (auto it = vec.begin(); it != vec.end(); ++it) {
+        std::cout << *it << " ";
+    }
+    ```
+
+- rbegin / rend
+  - 获取容器的反向起始和结束迭代器
+
+    ```cpp
+    std::vector<int> vec = {1, 2, 3};
+    for (auto it = vec.rbegin(); it != vec.rend(); ++it) {
+        std::cout << *it << " ";
+    }
+    ```
+
 ## 标准库方法
 
 ### iostream
@@ -319,6 +496,7 @@ std::cerr << "Error message" << std::endl; //错误输出
 - find
 - max
 - min
+- swap
 
 ```cpp
 #include <algorithm>
@@ -334,6 +512,7 @@ auto it = std::find(vec.begin(), vec.end(), 4); //查找元素
 
 int maxVal = std::max(a, b); //获取最大值
 int minVal = std::min(a, b); //获取最小值
+std::swap(a, b); //交换值
 ```
 
 ### cmath
@@ -1000,40 +1179,47 @@ CMake提供的方法：
     ```cmake
     cmake_minimum_required(VERSION 3.20)
     ```
+
 - 定义项目名称和编程语言
   
     ```cmake
     project(MyApp CXX) # 定义C++项目
     ```
+
 - 执行要生成的可执行文件和其源文件
   
     ```cmake
     # add_executable(<target> <source_files> ...)
     add_executable(app main.cpp foo.cpp)
     ```
+
 - 创建一个库及其源文件
 
     ```cmake
     add_library(mylib STATIC lib.cpp) # 静态库
     add_library(mylib SHARED lib.cpp) # 动态库
     ```
+
 - 链接目标文件与其他库
   - 作用是将指定的库文件链接到目标文件中，使得目标文件可以使用这些库中的函数和资源
 
     ```cmake
     target_link_libraries(app mylib pthread)
     ```
+
 - 添加头文件搜索路径
   - 作用是告诉编译器在指定的目录中查找头文件，以便在源代码中使用`#include`指令包含这些头文件
 
     ```cmake
     include_directories(<dirs> ...)
     ```
+
 - 设置变量的值
 
     ```cmake
     set(VAR_NAME value)
     ```
+
 - 安装目标文件和库
 
     ```cmake
@@ -1041,6 +1227,7 @@ CMake提供的方法：
     install(TARGETS mylib DESTINATION lib) # 安装库文件到lib目录
     install(FILES foo.h DESTINATION include) # 安装头文件到include目录
     ```
+
 - 条件语句
 
     ```cmake
