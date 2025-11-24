@@ -296,7 +296,7 @@ Docker核心原理就是为新创建的用户进程：
 
 ### Root File System
 
-> https://blog.csdn.net/Geffin/article/details/109741226
+> <https://blog.csdn.net/Geffin/article/details/109741226>
 
 rootfs是Linux的根文件系统内容，是最基础的文件和目录集合，即系统启动后挂载到`/`根目录的一套文件结构（FHS的子集），包含:
 
@@ -337,6 +337,7 @@ Docker镜像的目的是：
 > 镜像的只读层和容器的只读层是复用的，多个容器可以基于同一个镜像创建，每个容器有自己的可写层，这也是Docker轻量级的关键
 
 Overlay2的工作原理：
+
 - **LowerDir**：只读层，包含镜像的各个只读层
 - **UpperDir**：可写层，容器运行时对文件系统的修改都写入这里
 - **WorkDir**：工作目录，Overlay2用来进行文件系统操作的临时目录
@@ -383,7 +384,164 @@ Overlay2通过将多个只读层和一个可写层叠加在一起，加上COW机
 
 ### Namespace
 
+Namespace是一种把进程划分到不同隔离空间的机制，让每组进程看到的系统资源相互独立，这是Linux内核提供的一种轻量级虚拟化技术，Docker利用Namespace来实现容器的隔离效果
+
+Namespace实现了:
+
+- 进程隔离(PID Namespace):进程只能看到同一Namespace内的进程
+- 网络隔离(Network Namespace):每个容器有独立的网络环境
+- 文件系统隔离(Mount Namespace):每个容器有独立的文件系统视图
+- 另外即使在同一个主机上,也可以有自己的hostname、user、IPC等
+
+从而实现让多个轻量级虚拟环境运行在同一个OS内核上
+
+**Linux的Namespace类型**
+
+| Namespace 类型 | 作用                   | 示例                                  |
+| -------------- | ---------------------- | ------------------------------------- |
+| PID            | 进程号隔离             | 容器内的 PID 1 不等于宿主机的 PID 1   |
+| NET            | 网络隔离               | 容器有自己的 eth0、IP、路由           |
+| Mount (mnt)    | 文件系统结构隔离       | 每个容器有自己的 rootfs               |
+| UTS            | 主机名、域名隔离       | 容器内有自己的 hostname               |
+| IPC            | 进程间通信隔离         | 信号量、共享内存隔离                  |
+| USER           | 用户/权限隔离          | 容器内 root ≠ 宿主机 root             |
+| CGROUP         | 资源限制的目录视图隔离 | 限制 CPU、内存(常与 cgroups 配合使用) |
+| TIME           | 时间隔离(较新)         | 容器看到自己的虚拟时钟                |
+
+> Docker主要使用PID、NET、Mount、UTS、IPC、USER这6种Namespace来实现容器的隔离效果
+
+- PID Namespace
+  - 内核为每个PID namespace维护独立的PID映射表,容器内的进程只能看到同一namespace内的进程
+- Net Namespace
+  - 内核为每个新的net ns创建独立的网络堆栈,包括接口、路由表、防火墙规则等，每个容器有自己的`eth0`,`lo`,`routes`,`iptables`等
+  - 本质是内核创建了独立的网络协议栈实例
+- Mount Namespace
+  - 内核为每个mount namespace维护独立的挂载点视图，每个容器有自己的rootfs视图和mount tree,可以独立挂载/卸载文件系统
+- UTS Namespace
+  - hostname是一个内核对象（结构体），UTS namespace存储了自己的hostname
+  - 本质是每个namespace有自己的utsname结构体
+- IPC Namespace
+  - 内核的IPC对象（shm、sem、msg queues）属于某个IPC ns，不同namespace的进程无法访问对方的IPC对象
+  - 本质是IPC对象被挂载到各自的namespace
+- USER Namespace
+  - 使用/proc/PID/uid_map，将容器内的用户ID映射到宿主机的不同用户ID，通过这种映射实现权限隔离
+  - 本质是内核为每个user namespace维护独立的UID/GID
+
+**Namespace工作原理**
+
+Namespace通过修改内核为进程提供的资源视图来实现隔离，不同Namespace让不同的进程看到不同的系统资源对象，从而实现相互隔离，这不是通过资源拷贝实现的，而是靠内核为每个namespace维护独立的数据结构
+
+当Docker启动容器时，会通过`clone()`系统调用创建一个新的进程，执行类似以下操作：
+
+```
+clone(CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWUSER, ...)
+```
+
+每个`CLONE_NEW*`标志告诉内核为新进程创建一个新的Namespace实例，然后内核会分配一个新的数据结构实例，并将其与创建该Namespace的进程关联起来，这样该进程及其子进程在访问系统资源时，会使用与其关联的Namespace数据结构，从而实现资源的隔离
+
+内核中的每个进程（task_struct）都会关联指向多个Namespace的指针：
+
+```
+task_struct
+ ├── nsproxy
+       ├── pid_ns  #进程号，属于某个PID Namespace实例
+       ├── uts_ns  #主机名，属于某个UTS Namespace实例
+       ├── ipc_ns  #进程间通信，属于某个IPC Namespace实例
+       ├── net_ns  #网络，属于某个NET Namespace实例
+       ├── mnt_ns  #挂载点，属于某个Mount Namespace实例
+       └── user_ns #用户，属于某个USER Namespace实例
+```
+
+不同进程的`nsproxy`指针可以指向不同的Namespace实例，进程访问资源的时候，内核会找到该进程对应的Namespace实例，从而决定该进程看到的资源视图
+
+Namespace不是复制资源，而是复制资源视图，内核通过维护不同的Namespace实例，让不同的进程看到不同的资源对象，从而实现隔离
+
+例如，当执行`ps -ef`时，容器进程会查`task_struct`找到所属的PID Namespace实例，然后通过该实例找到该Namespace内的进程列表，从而只显示容器内的进程
+
+> Namespace相关的主要系统调用有：
+>
+> - `clone()`: 创建一个新的进程并分配新的隔离环境
+> - `unshare()`: 使当前进程与父进程分离，进入到新的Namespace
+> - `setns()`: 允许进程加入一个已经存在的Namespace
+
 ### Cgroups
+
+Linux原本的资源控制是进程级别的，CPU和内存等资源是分配给进程的，无法对一组相关进程进行统一管理和控制，而Cgroups（Control Groups）是一种内核机制，可以将一组进程组织在一起，作为一个整体来进行：
+
+- CPU资源限制（配额、优先级）
+- 内存资源限制（上限、OOM）
+- 磁盘IO限制（带宽、IOPS）
+- 网络带宽限制（cgroups v2支持）
+- 进程数量限制
+- Device访问控制
+
+cgroups是Linux做资源配额和资源隔离的核心能力，是容器的基础，其本质是一套内核中的Resource Controller Hook框架，每个资源控制器（如CPU、memory、blkiok）会在对应的内核代码路径中插入钩子，例如：进程调度位置（CPU controller）、页分配/回收位置（memory controller）、IO请求队列位置（blkio controller），当进程发生消耗CPU、分配内存、发起I/O，内核会调用对应的控制器钩子来检查和应用cgroups的限制策略
+
+**cgroups配置文件**
+
+cgroups的配置是通过虚拟文件系统`cgroupfs`来实现的，cgroupfs挂载在`/sys/fs/cgroup/<group>`目录下（cgroups v2），不同的资源控制器会有不同的子目录，每个子目录下可以创建多个cgroup，每个cgroup对应一组进程，可以通过向特定的控制文件写入参数来设置资源限制（主要文件）：
+
+- CPU
+  - cpu.max：限制CPU使用量`quota period`格式，例如`50000 100000`
+  - cpu.weight：CPU权重（1-10000）
+- Memory
+  - memory.max：最大内存限制（字节）
+  - memory.current：当前使用量
+  - memory.high：高水位触发内存回收
+  - memory.events：OOM、high等事件
+- IO
+  - io.max：IO限制（read/write bps或iops）
+  - io.stat：IO统计数据
+- PIDs
+  - pids.max：最大允许进程数
+- 通用
+  - cgroup.procs：当前cgroup包含的进程PID
+  - cgroup.subtree_control：启用/禁用子目录的controller
+
+一个资源参数就是一个文件，即cgroups的核心设计理念：把资源控制能力以文件的形式暴露出来：
+
+- 限制某个cgroup的内存使用上限为1G：
+
+```shell
+echo 1073741824 > /sys/fs/cgroup/my_cgroup/memory.max
+```
+
+- 将进程的CPU使用限制为50%：
+
+```shell
+echo "50000 100000" > /sys/fs/cgroup/my_cgroup/cpu.max
+```
+
+- 限制最大进程数为100：
+
+```shell
+echo 100 > /sys/fs/cgroup/my_cgroup/pids.max
+```
+
+> cgroups文件是动态的，不是保存在磁盘的，内核会实时从内核结构体生成这些文件的内容，用户空间可以通过读取这些文件来获取当前的资源使用情况和限制参数
+
+### 容器启动流程
+
+`docker run`的底层调用链路：
+
+1. Docker客户端把请求发送给Docker Daemon（dockerd）
+2. dockerd将任务交给containerd
+3. containerd调用runc（OCI runtime）来创建容器
+4. runc使用`clone()`系统调用来创建新的进程
+5. 在`clone()`调用中指定需要创建的Namespace类型（如CLONE_NEWNS、CLONE_NEWPID等）
+
+    ```
+    clone(CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWUSER, ...)
+    ```
+
+6. clone()的父进程返回，创建的子进程会执行：
+    - 设置rootfs（pivot_root/chroot）
+    - 挂载proc/sysfs
+    - 配置网络namespace（veth、ip addr）
+    - 设置hostname（UTS namespace）
+    - 应用cgroups（CPU/内存）
+    - 执行容器entrypoint（execve()）
+7. 最终clone()产生的子进程最终被替换为容器进程本身
 
 ## 常见面试题
 
@@ -400,13 +558,13 @@ Docker 是一个开源的平台，用于开发、发布和运行应用程序。�
 
 ### Docker与虚拟机(Virtual Machines)有何不同
 
-| 特性         | Docker 容器                   | 虚拟机 (VM)                     |
-| :----------- | :--------------------------- | :------------------------------|
-| **操作系统** | 共享宿主机的操作系统内核          | 每个 VM 都有自己的客户操作系统      |
-| **隔离级别** | 进程级隔离                      | 硬件级隔离（通过 Hypervisor）     |
-| **大小**     | 兆字节 (MB) 级，非常小巧轻量     | 千兆字节 (GB) 级，较大且臃肿       |
-| **启动时间** | 秒级或毫秒级，非常快             | 分钟级，启动较慢                  |
-| **资源消耗** | 资源开销小，效率高               | 资源开销大，需要更多 CPU 和内存     |
+| 特性         | Docker 容器                  | 虚拟机 (VM)                     |
+| :----------- | :--------------------------- | :------------------------------ |
+| **操作系统** | 共享宿主机的操作系统内核     | 每个 VM 都有自己的客户操作系统  |
+| **隔离级别** | 进程级隔离                   | 硬件级隔离（通过 Hypervisor）   |
+| **大小**     | 兆字节 (MB) 级，非常小巧轻量 | 千兆字节 (GB) 级，较大且臃肿    |
+| **启动时间** | 秒级或毫秒级，非常快         | 分钟级，启动较慢                |
+| **资源消耗** | 资源开销小，效率高           | 资源开销大，需要更多 CPU 和内存 |
 
 ### Docker镜像的用途是什么
 
