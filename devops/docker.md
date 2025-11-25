@@ -282,6 +282,7 @@ docker build [-options] Dockerfile_path
 
 ## Docker底层原理
 
+[Docker底层原理](https://cloud.tencent.com/developer/article/2343808)
 ![Docker architecture](../resources/images/docker-arch.png)
 
 Docker采用C/S架构，包括客户端和服务端，Docker守护进程（Daemon）作为服务端接受并处理来自客户端的请求（创建、运行、分发容器）
@@ -520,28 +521,40 @@ echo 100 > /sys/fs/cgroup/my_cgroup/pids.max
 
 > cgroups文件是动态的，不是保存在磁盘的，内核会实时从内核结构体生成这些文件的内容，用户空间可以通过读取这些文件来获取当前的资源使用情况和限制参数
 
-### 容器启动流程
+### 容器创建过程
 
-`docker run`的底层调用链路：
+当执行Docker命令启动一个容器时：
 
-1. Docker客户端把请求发送给Docker Daemon（dockerd）
-2. dockerd将任务交给containerd
-3. containerd调用runc（OCI runtime）来创建容器
-4. runc使用`clone()`系统调用来创建新的进程
-5. 在`clone()`调用中指定需要创建的Namespace类型（如CLONE_NEWNS、CLONE_NEWPID等）
+1. 准备容器的文件系统rootfs
+   - 容器是独立的rootfs（一堆文件）加上主机内核，因此一开始容器运行时（Docker）会从镜像仓库拉取或使用本地镜像
+   - 运行时会创建一个可写的容器层，叠加在只读的镜像层上
+   - 这些层通过OverlayFS叠加形成容器的rootfs
+2. 创建新的Namespaces隔离环境
+   - Docker调用`clone()`系统调用创建一个新的进程，并指定需要创建的Namespace类型（PID、Network、Mount、UTS、IPC、User等），以此来隔离容器
+3. 设置Cgroups资源限制
+   - 容器启动时会创建一个新的cgroup目录`/sys/fs/cgroup/<container_id>`，并向对应的控制文件写入资源限制参数，实际是调用内核的cgroups接口来应用资源限制
+4. 执行容器主进程
+   - 如果有mount目录，Docker会使用`mount()`将宿主机的目录挂载到容器的rootfs中，不会使用COW，数据也不会写到容器层，不会随容器删除，是属于宿主机的文件系统
 
-    ```
-    clone(CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWUSER, ...)
-    ```
+   ```bash
+   # docker run -v /data/log:/var/log ...
+   mount("/data/log", "/var/log", NULL, MS_BIND, NULL) # 没有复制和同步，就是同一个目录
+   ```
 
-6. clone()的父进程返回，创建的子进程会执行：
-    - 设置rootfs（pivot_root/chroot）
-    - 挂载proc/sysfs
-    - 配置网络namespace（veth、ip addr）
-    - 设置hostname（UTS namespace）
-    - 应用cgroups（CPU/内存）
-    - 执行容器entrypoint（execve()）
-7. 最终clone()产生的子进程最终被替换为容器进程本身
+   - 使用chroot/pivot_root切换到容器的rootfs作为新的根目录，然后执行容器的入口命令（ENTRYPOINT/CMD）
+  
+   ```bash
+   # 切换到容器的rootfs作为根目录
+   chroot /var/lib/docker/overlay2/merged
+
+   # 或使用pivot_root更彻底地切换根目录
+   pivot_root /var/lib/docker/overlay2/merged /var/lib/docker/overlay2/merged/old_root
+
+   # 执行容器的启动命令(如 /bin/bash 或应用程序)
+   exec /bin/sh -c "your-application"
+   ```
+
+5. 进程在容器内部执行，看到的PID是1（PID Namespace内），只能看到容器的rootfs文件系统，只能访问分配给他的网络、CPU、内存等资源，与宿主机其他进程完全隔离
 
 ## 常见面试题
 

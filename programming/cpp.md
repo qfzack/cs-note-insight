@@ -184,13 +184,15 @@ std::vector<int> vec = {1, 2, 3}; //创建动态数组
 std::vector<std::vector<int>> matrix = {{1, 2, 3}, {4, 5, 6}}; //二维动态数组
 
 vec.push_back(4); //添加元素到末尾
-vec.emplace_back(5); // 原地构造元素，效率更高
+vec.emplace_back(5); //原地构造元素，效率更高
 vec.pop_back(); //删除最后一个元素
 std::cout << vec.size(); //获取大小
 vec.clear(); //清空动态数组
 
 //访问元素
 int first = vec[0];
+//获取最后一个元素
+int last = vec.back();
 //遍历动态数组
 for (int v : vec) {
     std::cout << v << " ";
@@ -553,6 +555,25 @@ while (std::getline(inFile, line)) {
     std::cout << line << std::endl;
 }
 inFile.close();
+```
+
+### 其他
+
+- rand
+
+```cpp
+#include <random>
+#include <cstdlib>
+#include <ctime>
+
+std::random_device rd; //获取随机数种子
+std::mt19937 gen(rd()); //初始化随机数生成器
+std::uniform_int_distribution<> dis(1, 100); //定义均匀分布范围
+int randomNum = dis(gen); //生成随机数
+
+// 使用 C 风格的 rand()
+std::srand(std::time(nullptr)); //设置随机数种子
+int cRandomNum = std::rand() % 100 + 1; //生成1到100的随机数
 ```
 
 ## 指针
