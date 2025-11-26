@@ -194,7 +194,7 @@ docker run [-options] <image_name> [command]
 # docker run -it -v /local/path:/container/path ubuntu /bin/bash
 ```
 
-- `-d`：后台运行
+- `-d`：后台运行，detached模式
 - `-it`：交互式运行
 - `--name`：指定容器名称
 - `-p`：端口映射，`主机端口:容器端口`
@@ -561,501 +561,449 @@ echo 100 > /sys/fs/cgroup/my_cgroup/pids.max
 - [Docker Interview Questions](https://www.wecreateproblems.com/interview-questions/docker-interview-questions)
 - [100+ must know Docker interview questions and answers 2025](https://www.turing.com/interview-questions/docker)
 
-### 什么是Docker
+### 基础概念
 
-Docker 是一个开源的平台，用于开发、发布和运行应用程序。它通过使用容器（Containers）技术，将应用及其所有依赖项打包在一起，确保应用在任何环境中都能以相同的方式运行
+#### 什么是Docker
 
-### Docker中的容器是什么
+Docker 是一个开源的平台，用于开发、发布和运行应用程序
 
-容器是 Docker 镜像的运行实例。它是一个轻量级、可执行的软件包，包含运行应用程序所需的一切：代码、运行时、系统工具、系统库等。容器相互隔离，并在同一个宿主操作系统的内核上运行
+通过使用容器（Containers）技术，将应用及其所有依赖项打包在一起，确保应用在不同环境中的行为一致，并且容器环境是隔离的，只共享宿主机的内核资源
 
-### Docker与虚拟机(Virtual Machines)有何不同
+Docker 的核心优势是可移植性。一旦创建了 Docker 镜像，它就可以在任何支持 Docker 的系统上执行，确保跨环境的一致性。由于能够简化应用程序部署和扩展，Docker 在 DevOps、持续集成/持续部署 (CI/CD) 流程和云计算中被广泛使用
 
-| 特性         | Docker 容器                  | 虚拟机 (VM)                     |
-| :----------- | :--------------------------- | :------------------------------ |
-| **操作系统** | 共享宿主机的操作系统内核     | 每个 VM 都有自己的客户操作系统  |
-| **隔离级别** | 进程级隔离                   | 硬件级隔离（通过 Hypervisor）   |
-| **大小**     | 兆字节 (MB) 级，非常小巧轻量 | 千兆字节 (GB) 级，较大且臃肿    |
-| **启动时间** | 秒级或毫秒级，非常快         | 分钟级，启动较慢                |
-| **资源消耗** | 资源开销小，效率高           | 资源开销大，需要更多 CPU 和内存 |
+#### Docker中的容器是什么
 
-### Docker镜像的用途是什么
+Docker容器是镜像的运行实例，在轻量级虚拟化环境中作为隔离程序执行，容器包含了应用程序执行所需的程序代码、系统工具、库和设置，容器允许开发人员以标准化的方式在不同环境中构建、打包和运行应用程序
 
-Docker 镜像（Image）是用于创建 Docker 容器的只读模板。它包含了容器运行时所需的文件系统、代码、依赖项和配置信息。镜像是容器的蓝图，用于确保环境的一致性和可重复性
+主要特性是：
 
-### 解释一下什么是Docker容器
+- **轻量级**：容器共享主机的 OS 内核，因此比需要完整 OS 的 VM 更轻量
+- **可移植**：容器可以在任何安装了 Docker 的系统上执行
+- **隔离**：每个容器在自己的隔离环境中执行
+- **快速启动**：容器可以在几秒钟内启动
 
-Docker容器是Docker镜像的可运行实例。容器从镜像创建，在被启动后，它可以被执行、停止、移动和删除。容器是轻量级的、可移植的，并且是操作系统级别的虚拟化
+#### Docker与虚拟机(Virtual Machines)有何不同
 
-### 什么是Dockerfile
+Docker和虚拟机都提供了隔离应用程序的方法，但它们的方式根本不同。虚拟机是物理硬件的抽象，每个VM都是在主机OS之上执行完整的操作系统，这意味着每个VM都包含自己完整的OS，以及应用程序及其依赖项，相比之下，Docker容器虚拟化OS本身而不是硬件，直接在主机的OS内核上执行应用程序
 
-Dockerfile是一个文本文件，包含了一系列构建 Docker 镜像的指令（例如 `FROM`, `RUN`, `COPY`, `EXPOSE` 等）。Docker 通过读取 Dockerfile 中的指令来自动生成 Docker 镜像。
+主要区别：
 
-### Docker守护进程 (Docker Daemon) 的作用是什么
+- **资源使用**：容器更轻量，与主机共享OS内核；VM 需要为每个实例执行完整的OS
+- **启动时间**：容器可以在几秒钟内启动；VM需要几分钟来启动完整的OS
+- **可移植性**：容器高度可移植；VM较不可移植，受hypervisor和底层硬件限制
+- **隔离**：容器提供OS级隔离；VM提供更强的硬件级隔离
+- **性能**：容器开销较小，性能更好；VM由于完整OS开销较大
 
-Docker Daemon（通常称为 `dockerd`）是 Docker 架构的核心组件。它运行在宿主机上，负责监听 Docker API 请求，并管理 Docker 对象，例如镜像、容器、网络和存储卷。它是 Docker 引擎的控制中心
+总结：Docker容器适用于需要快速启动、可移植性和效率的场景，如微服务、云原生应用程序和CI/CD工作流程。VM则更适合需要完整OS级隔离或执行旧版软件的应用程序
 
-### 什么是 Docker Hub
+#### Docker镜像的用途是什么
 
-Docker Hub 是 Docker 官方提供的公共注册中心（Registry）。它允许用户和团队存储、共享和管理 Docker 镜像。它是一个大型的公共镜像仓库，包含数百万个社区和官方镜像。
+Docker镜像（Image）是用于创建Docker容器的只读模板，它包含了容器运行时所需的文件系统、代码、依赖项和配置信息，本质上镜像是环境的快照，可以确保应用在不同环境中的一致性
 
-### 如何删除 Docker 中已停止的容器？
+镜像的主要目的是为执行应用程序提供一致且可重现的环境，Dockerfile定义了构建镜像所需的步骤和指令，用户可以通过Docker Hub等注册中心共享和分发镜像
 
-使用 `docker rm` 命令，后跟容器 ID 或名称。
+镜像不可变，一旦创建就无法更改，只能重新构建，这保证了Docker镜像的可靠性和一致性
+
+#### 什么是Dockerfile
+
+Dockerfile是一个文本文件，包含一系列用于构建Docker镜像的指令，用于自动化创建Docker镜像
+
+Dockerfile的主要目标是为Docker镜像创建可重现的构建流程，确保每次构建镜像时都遵循相同的步骤
+
+#### Docker守护进程 (Docker Daemon) 的作用是什么
+
+Docker Daemon（也称为`dockerd`）是Docker的核心组件，运行在宿主机上，负责监听Docker API请求，并管理Docker对象，例如镜像、容器、网络和存储卷，是Docker引擎的控制中心
+
+主要功能：
+
+- 监听来自Docker CLI或API的请求
+- 管理Docker对象（镜像、容器、网络、卷）
+- 处理容器生命周期（启动、停止、重启容器）
+- 管理镜像构建和缓存
+- 促进容器之间的网络连接
+
+#### 什么是 Docker Hub
+
+Docker Hub是Docker官方提供的公共注册中心（Registry），允许用户和团队存储、共享和管理Docker镜像，它是一个大型的公共镜像仓库，包含数百万个社区和官方镜像
+
+### 什么是Docker Volume（卷）
+
+Docker Volume是一种持久化存储机制，用于存储容器生成或使用的数据，卷独立于容器的生命周期存在，存在主机文件系统上，即使容器被删除，数据也不会丢失
+
+Volume的作用：
+
+- **数据持久性**：即使容器停止或删除，数据也会保留
+- **在容器之间共享数据**：多个容器可以挂载同一个卷
+- **性能**：卷比绑定挂载更高效
+- **备份和恢复**：卷可以轻松备份和恢复
+
+要在 Docker 中创建和使用卷，可以使用 `docker volume` 命令：
 
 ```bash
-docker rm <container_id_or_name>
+docker volume create my_volume
+
+docker run -v my_volume:/data my_image
 ```
 
-要删除所有已停止的容器，可以使用：
-
-```bash
-docker container prune
-```
-
-### 什么是 Docker Volume（卷）？
-
-Docker Volume 是一种持久化存储机制，用于存储容器生成或使用的数据。卷独立于容器的生命周期存在，即使容器被删除，数据也不会丢失。
-
-### 如何在 Docker 容器中管理数据？
+### 如何在Docker容器中管理数据
 
 主要有三种方式：
 
-1. **Volume (卷)：** 推荐的方式，由 Docker 管理，独立于容器。
-2. **Bind Mount (绑定挂载)：** 直接将宿主机上的文件或目录挂载到容器内。
-3. **Tmpfs Mount (内存挂载)：** 将数据临时存储在宿主机的内存中，不写入磁盘。
-
-### Docker Compose 的用途是什么？
-
-Docker Compose 是一个用于定义和运行多容器 Docker 应用程序的工具。通过一个 YAML 文件（通常是 `docker-compose.yml`），可以配置应用的所有服务、网络和存储卷，然后使用一个命令（`docker-compose up`）来启动整个应用栈。
-
-### 如何通过 Dockerfile 创建 Docker 镜像？
-
-使用 `docker build` 命令，后跟 Dockerfile 所在的路径（通常是当前目录 `.`）。
+1. **Volume(卷)：** 推荐的方式，由Docker管理，独立于容器
+2. **Bind Mount(绑定挂载)：** 直接将宿主机上的文件或目录挂载到容器内
+3. **Tmpfs Mount(内存挂载)：** 将数据临时存储在宿主机的内存中，不写入磁盘
 
 ```bash
-docker build -t <image_name>:<tag> .
-# 示例：
-docker build -t my-app:latest .
+docker run --mount type=volume,source=my_volume,target=/container/path my_image  # 使用卷
+docker run -v /host/path:/container/path my_image  # 绑定挂载
+docker run --tmpfs /container/path my_image  # 内存挂载
 ```
 
-- `-t`：用于为镜像指定名称和标签。
+### Docker Compose的用途是什么
 
-### 什么是 Docker Network（网络）？
+Docker Compose是一个用于定义和执行多容器Docker应用程序的工具，通过一个YAML文件（通常是 `docker-compose.yml`），可以配置应用的所有服务、网络和存储卷，然后使用一个命令`docker-compose up`来启动整个应用栈
 
-Docker Network 允许容器相互通信，并与宿主机或外部世界通信。Docker 提供了多种网络驱动，如 Bridge（默认）、Host、Overlay 等。
+Docker Compose特别适用于处理需要多个容器的应用程序，如具有前端、后端和数据库的Web应用程序，以及可能的其他服务，如缓存、消息代理等，支持在一个地方定义容器的配置、依赖项和连接来简化管理多个容器
 
-### 如何查找正在运行的 Docker 容器的 IP 地址？
+主要功能和优势：
 
-使用 `docker inspect` 命令配合格式化选项 `-f`：
+- **简化配置**：在单个 YAML 文件中定义所有服务
+- **易于扩展**：轻松扩展服务
+- **网络**：自动为服务创建网络
+- **卷管理**：在服务之间定义和共享卷
+- **环境管理**：使用环境变量配置服务
+
+```yaml
+version: '3'
+services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+  db:
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+```
+
+### 什么是Docker Network
+
+Docker网络是一个虚拟网络，允许Docker容器彼此通信以及与宿主机和外部世界通信，Docker提供了多种网络驱动，如Bridge（默认）、Host、Overlay等
+
+有几种类型的 Docker 网络：
+
+- **Bridge(桥接)：** **默认网络**，Docker在宿主机上创建一个私有内部网络，容器连接到此网络，容器之间可以相互通信，但需要通过宿主机的端口映射才能从外部访问
+- **Host(主机)：** 容器直接使用宿主机的网络堆栈，容器没有独立的IP地址，它们共享宿主机的IP和端口，隔离性最弱，但性能最好
+- **Overlay(覆盖)：** 用于连接多个Docker主机上的容器，它构建在底层物理网络之上，用于Docker Swarm或Kubernetes等集群环境，使跨主机通信成为可能
+- **None**：禁用容器的网络
+- **Macvlan**：为容器分配MAC地址，使其在网络上显示为物理设备
+
+```bash
+docker network create my_bridge_network # 创建默认桥接网络(无需额外参数)
+
+# 进阶配置：指定子网/网关/IP段/标签
+docker network create \
+  --driver bridge \
+  --subnet 172.25.0.0/16 \
+  --gateway 172.25.0.1 \
+  --ip-range 172.25.5.0/24 \
+  --label env=dev \
+  my_bridge_network
+
+# 查看网络详情(IPAM、已连接容器等)
+docker network inspect my_bridge_network
+
+# 运行容器并加入网络（自动分配IP）
+docker run -d --name web --network my_bridge_network nginx
+
+# 指定容器的静态IP(需在子网范围内且未被占用)
+docker run -d --name app --network my_bridge_network --ip 172.25.5.10 myimage
+
+# 将已存在容器连接到网络
+docker network connect my_bridge_network existing_container
+
+# 从网络断开容器
+docker network disconnect my_bridge_network existing_container
+
+# 在同一自定义bridge网络内可用容器名称做DNS解析
+docker run -it --network my_bridge_network busybox ping web
+
+# 清理与删除（需无挂载容器）
+docker network rm my_bridge_network
+docker network prune  # 删除未使用的网络
+
+# 说明：
+# 1. bridge适用于单主机容器间通信，跨主机请使用overlay。
+# 2. --ip-range用于限制可动态分配的IP池（可选）。
+# 3. 仅自定义bridge网络支持自动DNS解析（默认bridge较弱）。
+
+docker run --network my_bridge_network my_image
+```
+
+### 如何查找正在运行的容器的IP
+
+获取Docker网络系统分配给容器的IP地址，如果容器附加到特定网络，Docker会在该网络范围内为其分配IP地址
 
 ```bash
 docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_id_or_name>
 ```
 
-### `docker run` 和 `docker exec` 有什么区别？
-
-- `docker run`：**创建并启动**一个新的容器。
-- `docker exec`：在**已经运行**的容器内执行一个新的命令。通常用于调试或进入正在运行的容器（例如：`docker exec -it <container_name> /bin/bash`）。
-
-### 使用 Docker 的优势是什么？
-
-- **一致性：** 确保应用在开发、测试和生产环境中的一致性。
-- **可移植性：** 容器可以在任何支持 Docker 的系统上运行。
-- **隔离性：** 容器相互隔离，避免了依赖冲突。
-- **效率：** 容器轻量且启动快，提高了资源利用率。
-- **CI/CD 集成：** 易于集成到持续集成/持续交付流程中。
-
-### 如何检查 (inspect) 一个 Docker 容器？
-
-使用 `docker inspect` 命令，后跟容器 ID 或名称。它会返回一个包含容器详细低级信息（JSON 格式）的对象，包括网络、配置、卷挂载等。
-
-### Docker 中的环境变量是什么？
-
-环境变量是设置在容器环境中的变量，可供容器内运行的应用程序使用，用于运行时配置。可以在 Dockerfile 中使用 `ENV` 指令设置，或在 `docker run` 时使用 `-e` 标志传递。
-
-### 如何扩展 (scale) 一个 Docker 容器？
-
-- **基本方式：** 手动使用 `docker run` 命令启动多个相同的容器实例。
-- **推荐方式：** 使用编排工具，如 **Docker Compose**（用于本地开发）或 **Docker Swarm/Kubernetes**（用于生产环境），通过配置服务定义来管理多个副本。
-
-### 什么是 Docker Registry（注册中心）？
-
-Docker Registry 是一个存储 Docker 镜像的仓库。它是一个服务器端应用，负责存储和分发镜像。Docker Hub 是最知名的公共 Registry。也可以设置私有 Registry。
-
-### 什么是 Docker Swarm？
-
-Docker Swarm 是 Docker 官方提供的原生容器编排工具。它允许用户将多个 Docker 主机（节点）组成一个虚拟的集群，并以服务（Service）的形式管理和部署应用。
-
-### Docker 容器的默认网络模式是什么？
-
-默认的网络模式是 **Bridge（桥接）** 模式。在这种模式下，Docker 会创建一个虚拟桥接网络，容器连接到这个网络，并获得一个私有 IP 地址，可以通过宿主机的 IP 进行通信。
-
-### 如何更新一个现有的 Docker 容器？
-
-Docker 容器本质上是不可变的。更新一个容器的标准流程是：
-
-1. 构建一个包含新代码或配置的**新镜像**。
-2. 停止并删除**旧容器** (`docker stop` 和 `docker rm`)。
-3. 使用新镜像**启动新容器** (`docker run`)。
-    *在生产环境中，应使用编排工具（如 Swarm 或 Kubernetes）进行零停机时间的滚动更新。*
-
-### 如何检查系统上的 Docker 状态？
-
-在使用 `systemd` 的 Linux 系统上，可以使用：
+查看更详细的网络信息，可以省略 `-f` 标志并检查整个容器：
 
 ```bash
-systemctl status docker
+docker inspect my_container
 ```
 
-此外，`docker info` 命令可以提供关于 Docker 守护进程和系统资源的详细信息。
+### `docker run`和`docker exec` 有什么区别
 
-### Docker 中的默认桥接网络是什么？
+- `docker run`：**创建并启动**一个新的容器
+- `docker exec`：在**已经运行**的容器内执行一个新的命令，通常用于调试或进入正在运行的容器（例如：`docker exec -it <container_name> /bin/bash`）
 
-默认桥接网络是 Docker 在安装时自动创建的 `bridge` 网络。所有没有指定网络的容器默认都会连接到这个网络，它们可以通过 IP 地址互相通信。
+### 使用Docker的优势是什么
 
-### `docker-compose.yml` 的用途是什么？
+1. **可移植性**：容器在任何安装了Docker的系统上一致执行
+2. **一致性**：确保开发、测试和生产环境相同
+3. **隔离**：容器彼此隔离，减少冲突
+4. **效率**：容器轻量且快速启动
+5. **可扩展性**：轻松扩展应用程序
+6. **版本控制**：镜像可以版本化和回滚
+7. **资源优化**：容器比VM使用更少的资源
+8. **DevOps 集成**：与CI/CD流程无缝集成
+9. **微服务支持**：非常适合微服务架构
 
-它是 Docker Compose 的配置文件，用于**定义多容器应用的结构**。它指定了组成应用程序的所有服务（容器）、它们使用的镜像、端口映射、卷挂载和网络配置。
+### 什么是Docker Swarm
 
-### 如何以分离模式 (detached mode) 运行容器？
+Docker Swarm是Docker官方提供的原生容器编排工具，它允许用户将多个Docker主机（节点）组成一个虚拟的集群，并以服务（Service）的形式管理和部署应用
 
-在 `docker run` 命令中使用 `-d` 或 `--detach` 标志。容器将在后台运行，并将容器 ID 打印到终端。
+Docker Swarm的主要功能：
+
+- **集群管理**：将多个Docker主机组合成一个集群
+- **服务部署**：在集群中部署和管理服务
+- **负载平衡**：在容器之间自动分配流量
+- **扩展**：轻松扩展或缩减服务
+- **自我修复**：自动替换失败的容器
+- **滚动更新**：在不停机的情况下更新服务
 
 ```bash
-docker run -d <image_name>
+docker swarm init # 初始化Swarm集群
+docker swarm join --token <token> <manager_ip>:2377 # 加入节点
+docker service create --name my_service --replicas 3 my_image # 创建服务
+docker service scale my_service=5 # 扩展服务
+docker service update --image new_image my_service # 滚动更新服务
 ```
 
------
+### 什么是多阶段构建
 
-### 解释多阶段 Docker 构建 (multi-stage Docker build) 的概念
+多阶段Docker构建是一种通过减少镜像大小和提高构建效率来优化Docker镜像的技术，通过在单个Dockerfile中定义多个阶段，每个阶段都有自己的基础镜像和一组指令，关键思想是可以将构件从一个阶段复制到另一个阶段，允许将构建环境与运行时环境分开
 
-多阶段构建允许您在 Dockerfile 中定义多个 `FROM` 语句。每个 `FROM` 指令都代表一个新的构建阶段。其核心思想是：利用第一个或中间阶段来编译代码、运行测试等，然后将最终需要的少量工件（如编译后的二进制文件或最终的运行代码）复制到最终的、更精简的基础镜像中。这极大地减小了最终生产镜像的大小，提高了安全性。
+Dockerfile中可以定义多个`FROM`语句，每个`FROM`指令都代表一个新的构建阶段，其核心思想是：利用第一个或中间阶段来编译代码、运行测试等，然后将最终需要的少量制品（如编译后的二进制文件或最终的运行代码）复制到最终的、更精简的基础镜像中，这极大地减小了最终生产镜像的大小，提高了安全性
 
-### 什么是 Docker Compose，它如何帮助管理多容器应用程序？
+```dockerfile
+# 阶段 1：构建阶段
+FROM golang:1.16 AS builder
+WORKDIR /app
+COPY . .
+RUN go build -o myapp .
 
-Docker Compose 是用于定义和运行多容器 Docker 应用程序的工具。它通过以下方式简化管理：
+# 阶段 2：最终镜像
+FROM alpine:latest
+WORKDIR /root/
+COPY --from=builder /app/myapp .
+CMD ["./myapp"]
+```
 
-- **单一配置文件：** 使用一个 `docker-compose.yml` 文件定义所有服务、网络和卷。
-- **一键式操作：** 使用 `docker-compose up` 命令即可启动、连接和管理整个应用程序堆栈（包括数据库、前端、后端等多个容器）。
-- **服务发现：** 默认情况下，Compose 会创建一个网络，并允许容器通过服务名称互相访问。
+### 如何在不停止服务的情况下更新正在运行的容器
 
-### Docker 网络是如何工作的？描述 Bridge、Host 和 Overlay 网络
+在生产环境中，这需要使用**容器编排工具**（如Docker Swarm或Kubernetes）来实现**滚动更新(Rolling Update)**：
 
-Docker 使用网络驱动程序来提供不同类型的网络：
+1. **Swarm：** 定义一个服务（Service）并指定多个副本。当您更新镜像标签时，Swarm会逐个停止旧容器，启动新容器，并在整个过程中保持所需数量的副本在线，从而实现零停机更新
+2. **Kubernetes：** 使用Deployment资源，它会自动管理滚动更新策略
 
-- **Bridge (桥接)：** **默认网络。** Docker 在宿主机上创建一个私有内部网络，容器连接到此网络。容器之间可以相互通信，但需要通过宿主机的端口映射才能从外部访问。
-- **Host (主机)：** 容器直接使用宿主机的网络堆栈。容器没有独立的 IP 地址，它们共享宿主机的 IP 和端口。隔离性最弱，但性能最好。
-- **Overlay (覆盖)：** 用于连接多个 Docker 主机上的容器。它构建在底层物理网络之上，用于 Docker Swarm 或 Kubernetes 等集群环境，使跨主机通信成为可能。
-
-### Docker Volumes（卷）和 Bind Mounts（绑定挂载）有什么区别？
-
-| 特性         | Docker Volume (卷)                                                     | Bind Mount (绑定挂载)                                            |
-| :----------- | :--------------------------------------------------------------------- | :--------------------------------------------------------------- |
-| **位置**     | 存储在宿主机文件系统的 Docker 管理区域内 (`/var/lib/docker/volumes`)。 | 存储在宿主机文件系统的**任意指定**位置。                         |
-| **管理**     | 由 Docker 完全管理，更安全、更可移植。                                 | 依赖于宿主机的目录结构，可移植性较差。                           |
-| **初始化**   | 可以在创建卷时预先填充数据。                                           | 宿主机目录的内容直接覆盖容器内目录的内容。                       |
-| **使用场景** | 推荐的持久化存储方式，用于数据库数据、日志等。                         | 用于挂载配置（例如 Apache/Nginx 配置）或将代码挂载到开发容器中。 |
-
-### Dockerfile 中的 `COPY` 和 `ADD` 命令有什么区别？应该何时使用它们？
-
-- **`COPY`：** 用于将本地文件或目录从构建上下文复制到镜像文件系统中的指定路径。
-- **`ADD`：** 除了具备 `COPY` 的功能外，还具有两个特殊功能：
-    1. 如果源文件是本地可识别的压缩包（如 `.tar.gz`），它会自动解压到目标路径。
-    2. 如果源文件是 URL，它会下载文件到目标路径。
-- **使用建议：** 推荐使用 **`COPY`**，因为它更透明、更清晰，且不会触发意外的解压行为。只有当您明确需要自动解压本地压缩文件或从 URL 下载文件时，才使用 `ADD`。
-
-### 如何在不停止服务的情况下更新正在运行的容器？
-
-在生产环境中，这需要使用**容器编排工具**（如 Docker Swarm 或 Kubernetes）来实现**滚动更新 (Rolling Update)**：
-
-1. **Swarm：** 定义一个服务（Service）并指定多个副本。当您更新镜像标签时，Swarm 会逐个停止旧容器，启动新容器，并在整个过程中保持所需数量的副本在线，从而实现零停机更新。
-2. **Kubernetes：** 使用 Deployment 资源，它会自动管理滚动更新策略。
-
-### 如何确保 Docker 容器是无状态的 (stateless)？
+### 如何确保Docker容器是无状态的(stateless)
 
 确保容器无状态意味着：
 
-1. **不将持久数据存储在容器的文件系统内。** 所有需要持久化的数据都必须存储在外部存储（如 Docker Volumes 或外部数据库）中。
-2. **配置通过环境变量或挂载的配置文件提供。** 不应在容器启动后进行修改。
-3. **日志应该发送到 STDOUT/STDERR，** 然后由外部日志驱动程序（如 Fluentd, Splunk, ELK Stack）进行收集和处理。
+1. **不将持久数据存储在容器的文件系统内**：所有需要持久化的数据都必须存储在外部存储（如Docker Volumes或外部数据库）中
+2. **配置通过环境变量或挂载的配置文件提供**：不应在容器启动后进行修改
+3. **日志应该发送到STDOUT/STDERR**：然后由外部日志驱动程序（如Fluentd, Splunk, ELK Stack）进行收集和处理
 
-### 如何优化 Docker 镜像以用于生产环境？
+### 如何优化Docker镜像的构建
 
-1. **使用多阶段构建 (Multi-Stage Builds)：** 仅将最终的运行时工件复制到最终镜像中。
-2. **选择最小的基础镜像：** 使用 Alpine Linux 等轻量级基础镜像，以减小体积和攻击面。
-3. **利用缓存：** 将变化频率较低的指令（如安装依赖）放在 Dockerfile 的前面，以利用 Docker 的构建缓存。
-4. **合并 `RUN` 指令：** 将多个 `RUN` 命令合并为一个，以减少镜像层数。
-5. **清理不必要的缓存和文件：** 在同一层中清理下载的包和临时文件。
+1. **使用多阶段构建 (Multi-Stage Builds)：** 仅将最终的运行时工件复制到最终镜像中
+2. **选择最小的基础镜像：** 使用Alpine Linux等轻量级基础镜像，以减小体积和攻击面
+3. **利用缓存：** 将变化频率较低的指令（如安装依赖）放在 Dockerfile 的前面，以利用 Docker 的构建缓存
+4. **合并 `RUN` 指令：** 将多个 `RUN` 命令合并为一个，以减少镜像层数
+5. **清理不必要的缓存和文件：** 在同一层中清理下载的包和临时文件
 
-### 什么是 Docker Swarm，它与 Kubernetes 有何不同？
+### Docker Swarm与Kubernetes有何不同？
 
-- **Docker Swarm：** Docker 官方的原生编排工具，深度集成于 Docker 引擎。它**易于设置和使用**，适合简单的集群和快速部署。
-- **Kubernetes (K8s)：** 社区中最流行的容器编排系统。它**功能强大、生态系统丰富、复杂性更高**。它提供了更高级的功能，如自动扩展、自我修复、更复杂的网络和存储管理。
-- **总结：** Swarm 简单快捷；Kubernetes 功能强大，但学习曲线更陡峭，是大多数大型生产环境的首选。
+- **Docker Swarm：** Docker官方的原生编排工具，深度集成于Docker引擎，**易于设置和使用**，适合简单的集群和快速部署
+- **Kubernetes (K8s)：** 社区中最流行的容器编排系统，**功能强大、生态系统丰富、复杂性更高**，提供了更高级的功能，如自动扩展、自我修复、更复杂的网络和存储管理。
+- **总结：** Swarm简单快捷；Kubernetes功能强大，但学习曲线更陡峭，是大多数大型生产环境的首选
 
-### 什么是 Docker 标签 (tags)，为什么它们很重要？
+### 如何保护Docker容器的安全
 
-Docker 标签用于为镜像的特定版本提供易于识别的别名。
+1. **最小化基础镜像：** 使用Alpine或Distroless等最小化镜像以减少攻击面
+2. **非 Root 用户运行：** 在Dockerfile中使用`USER`指令，避免以`root`身份运行容器内进程
+3. **最小化权限：** 遵循最小权限原则，限制容器的capabilities
+4. **扫描漏洞：** 使用Snyk或Clair等工具扫描镜像中的已知漏洞
+5. **只读文件系统：** 使用`--read-only`标志运行容器，以防止运行时写入
+6. **安全配置：** 使用Seccomp/AppArmor/SELinux等工具增强内核级的隔离
 
-- **重要性：** 标签使得用户可以区分同一应用的不同版本（例如 `myapp:v1.0` 和 `myapp:latest`）、不同架构或不同环境（例如 `myapp:prod` 和 `myapp:staging`）。它们对于版本控制、发布管理和确保部署的一致性至关重要。
+### `docker exec`与`docker attach`的作用
 
-### 如何将 Docker 容器的端口暴露给宿主机？
+- **`docker exec`：** 在**运行中**的容器内**执行一个新的进程/命令**，与容器的主进程是分离的，用于调试或运行新的Shell会话
+- **`docker attach`：** 将本地的标准输入、输出和错误流**连接到容器的主进程**（即容器启动时运行的命令），当退出容器时，如果主进程没有处理信号，容器可能会停止
 
-使用 `docker run` 命令中的 `-p` 或 `--publish` 标志进行端口映射。
+### 如何监控正在运行的Docker容器的性能
 
-```bash
-docker run -p <host_port>:<container_port> <image_name>
-# 示例：将容器的 80 端口映射到宿主机的 8080 端口
-docker run -p 8080:80 nginx
-```
+1. **`docker stats`：** 实时查看CPU、内存、网络I/O和块I/O
+2. **`docker top`：** 查看容器内正在运行的进程
+3. **外部工具：** 使用Prometheus/Grafana、Datadog或cAdvisor等监控工具，收集和可视化容器的详细指标
 
-### Docker 容器和 Docker Service（服务）有什么区别？
+### 什么是Docker Volume Driver（卷驱动程序）
 
-- **Docker 容器 (Container)：** 单个运行的应用实例。在单个 Docker 主机上运行。
-- **Docker Service (服务)：** 仅存在于 Docker Swarm 或 Kubernetes 等编排工具中。Service 是您希望运行的容器副本的定义。它定义了所需的镜像、端口、网络和**所需的副本数量**。一个 Service 可以由多个容器实例（称为 Tasks 或 Replicas）组成，并提供负载均衡和高可用性。
+卷驱动程序允许将第三方存储系统（如网络文件系统、云存储）集成到Docker中，以满足更高级的持久化和共享存储需求
 
-### 如何保护 Docker 容器的安全？
-
-1. **最小化基础镜像：** 使用 Alpine 或 Distroless 等最小化镜像以减少攻击面。
-2. **非 Root 用户运行：** 在 Dockerfile 中使用 `USER` 指令，避免以 `root` 身份运行容器内进程。
-3. **最小化权限：** 遵循最小权限原则，限制容器的 capabilities。
-4. **扫描漏洞：** 使用 Snyk 或 Clair 等工具扫描镜像中的已知漏洞。
-5. **只读文件系统：** 使用 `--read-only` 标志运行容器，以防止运行时写入。
-6. **安全配置：** 使用 Seccomp/AppArmor/SELinux 等工具增强内核级的隔离。
-
-### `docker exec` 与 `docker attach` 的目的是什么？
-
-- **`docker exec`：** 在**运行中**的容器内**执行一个新的进程/命令**。它与容器的主进程是分离的，用于调试或运行新的 Shell 会话。
-- **`docker attach`：** 将本地的标准输入、输出和错误流**连接到容器的主进程**（即容器启动时运行的命令）。当您退出时，如果主进程没有处理信号，容器可能会停止。
-
-### 如何监控正在运行的 Docker 容器的性能？
-
-1. **`docker stats`：** 实时查看 CPU、内存、网络 I/O 和块 I/O。
-2. **`docker top`：** 查看容器内正在运行的进程。
-3. **外部工具：** 使用 Prometheus/Grafana、Datadog 或 cAdvisor 等监控工具，收集和可视化容器的详细指标。
-
-### 如何在 Docker Swarm 中执行滚动更新 (Rolling Updates)？
-
-1. 首先，部署应用程序为一个 Swarm 服务 (`docker service create`)。
-2. 当需要更新时，更新服务的镜像版本 (`docker service update --image <new_image> <service_name>`)。
-3. Swarm 会根据服务定义中配置的更新策略（例如，一次更新一个副本，延迟几秒）自动逐个替换旧容器实例为新容器实例。
-
-### 什么是 Docker Volume Driver（卷驱动程序），如何使用它？
-
-卷驱动程序允许您将第三方存储系统（如网络文件系统、云存储）集成到 Docker 中，以满足更高级的持久化和共享存储需求。
-
-- **使用：** 在创建卷时指定驱动程序，例如：
-
-    ```bash
-    docker volume create --driver <driver_name> --opt <key=value> <volume_name>
-    ```
-
-### 什么是 Docker Health Check（健康检查），如何配置它们？
-
-健康检查是一种机制，允许 Docker 验证容器内的应用程序是否确实“健康”和可用，而不仅仅是容器进程是否在运行。
-
-- **配置：** 在 Dockerfile 中使用 `HEALTHCHECK` 指令。
-
-    ```dockerfile
-    HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD curl --fail http://localhost/ || exit 1
-    ```
-
-    它指定了一个命令 (`curl`)，如果退出码为非 0，则认为容器不健康。
-
-### 如何将宿主机目录挂载到 Docker 容器中？
-
-使用 `docker run` 命令中的 `-v` 或 `--volume` 标志进行绑定挂载 (Bind Mount)。
+可以在创建卷时指定驱动程序
 
 ```bash
-docker run -v <host_path>:<container_path> <image_name>
-# 示例：将宿主机的 /app/data 目录挂载到容器内的 /usr/share/app/data
-docker run -v /app/data:/usr/share/app/data nginx
+docker volume create --driver <driver_name> --opt <key=value> <volume_name>
 ```
 
-### 解释 Docker 容器编排 (Container Orchestration) 的概念
+### 什么是Docker Health Check（健康检查）
 
-容器编排是指管理大量容器的生命周期、部署、联网和扩展的自动化过程。它解决了在生产环境中管理微服务应用程序的复杂性，包括：
+健康检查是一种机制，允许Docker验证容器内的应用程序是否确实“健康”和可用，而不仅仅是容器进程是否在运行
+
+在Dockerfile中使用`HEALTHCHECK`指令
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD curl --fail http://localhost/ || exit 1
+```
+
+指定了一个命令 (`curl`)，如果退出码为非 0，则认为容器不健康
+
+### 容器编排(Container Orchestration)是什么
+
+容器编排是指管理大量容器的生命周期、部署、联网和扩展的自动化过程，解决了在生产环境中管理微服务应用程序的复杂性，包括：
 
 - 集群管理
 - 调度（将容器放置到合适的机器上）
 - 服务发现和负载均衡
 - 存储卷管理
 - 故障恢复/自我修复
-    **主要工具：** Kubernetes, Docker Swarm。
+- 滚动更新和回滚
 
-### 如何为容器创建自定义 Docker 网络？
+### 如何在Docker化环境中管理日志
 
-使用 `docker network create` 命令。
+1. **容器日志标准：** 确保应用将日志发送到**STDOUT**和**STDERR**，即打印到终端，以便Docker可以捕获这些输出流
+2. **Docker Log Driver：** 使用Docker的日志驱动程序（例如 `json-file`、`syslog`、`fluentd`）来捕获这些流
+3. **集中式日志系统：** 将日志发送到集中式日志平台（如 ELK Stack, Splunk, Graylog），以便于搜索、分析和长期存储
 
-```bash
-docker network create --driver bridge my-custom-network
-# 运行容器并连接到该网络：
-docker run -d --network my-custom-network --name web-app web-image
-docker run -d --network my-custom-network --name db-server db-image
-```
+### 如何在Docker容器之间共享数据
 
-连接到同一个自定义网络的容器可以通过名称互相解析和通信。
+1. **Docker Volumes：** 创建一个卷，并将其挂载到需要共享数据的两个或多个容器中，这是最推荐的方式
+2. **Bind Mounts：** 将宿主机的某个目录挂载到多个容器中（可移植性较差）
+3. **自定义网络：** 如果是应用级数据（如API调用结果），容器可以通过连接到同一自定义网络，利用网络通信共享数据
 
-### 如何在 Docker 化环境中管理日志？
+### 如何在CI/CD流水线中使用Docker
 
-1. **容器日志标准：** 确保应用将日志发送到 **STDOUT** 和 **STDERR**。
-2. **Docker Log Driver：** 使用 Docker 的日志驱动程序（例如 `json-file`、`syslog`、`fluentd`）来捕获这些流。
-3. **集中式日志系统：** 将日志发送到集中式日志平台（如 ELK Stack, Splunk, Graylog），以便于搜索、分析和长期存储。
+1. **构建阶段：** CI/CD服务器签出代码，使用`docker build`命令根据Dockerfile构建应用的Docker镜像
+2. **测试阶段：** 运行新的镜像作为容器，执行单元测试、集成测试
+3. **发布阶段：** 使用 `docker tag` 为镜像打上版本标签，并使用 `docker push` 推送到 Docker Registry（如 Docker Hub 或私有 Registry）
+4. **部署阶段：** 编排工具（如 Kubernetes）从 Registry 拉取新镜像并部署到生产集群
 
-### 如何使用 Docker Compose 处理多容器环境？
+### Docker在微服务架构中的作用是什么
 
-1. **定义 `docker-compose.yml`：** 在其中定义应用程序的每个服务（例如 Web 应用程序、数据库、缓存），指定它们各自的镜像、端口、环境变量和依赖关系。
-2. **一键启动：** 运行 `docker-compose up -d` 来启动和连接所有服务。
-3. **服务发现：** 容器之间可以自动通过服务名称进行通信（例如 Web 容器可以通过名称 `db` 访问数据库容器）。
+Docker是实现微服务架构的**基石**
 
-### 什么是 Dockerfile 构建参数 (build arguments)，如何使用它们？
+- **隔离性：** 每个微服务都可以被打包成一个独立的 Docker 容器，确保服务间的隔离
+- **部署：** 简化了微服务的部署和管理
+- **技术无关性：** 允许不同微服务使用不同的技术栈（语言、库），因为它们都被容器化了
+- **可扩展性：** 容器编排工具（如 K8s）可以轻松地单独扩展每个微服务
 
-构建参数 (`ARG`) 是在镜像构建时（即 `docker build` 阶段）传递给 Dockerfile 的变量，仅在构建阶段有效，不会保留在最终镜像中作为环境变量。
+### 如何对一个非启动 (non-starting) 的Docker容器进行故障排除
 
-- **Dockerfile 中定义：** `ARG BUILD_VERSION=1.0`
-- **构建时传递：** `docker build --build-arg BUILD_VERSION=2.0 -t myapp:2.0 .`
+1. **查看日志：** 使用 `docker logs <container_id_or_name>` 检查容器启动失败的原因
+2. **检查状态：** 使用 `docker ps -a` 确认容器的状态（如 `Exited (1)`）
+3. **检查配置：** 使用 `docker inspect <container_id>` 查看启动命令、环境变量、卷挂载等配置是否正确
+4. **交互式启动：** 尝试以交互模式运行容器 (`docker run -it --entrypoint /bin/bash <image_name>`)，手动执行容器的启动命令来重现错误
 
-### 如何在 Docker 容器之间共享数据？
+### 解释Docker中的镜像层layers概念
 
-1. **Docker Volumes：** 创建一个卷，并将其挂载到需要共享数据的两个或多个容器中。这是最推荐的方式。
-2. **Bind Mounts：** 将宿主机的某个目录挂载到多个容器中（可移植性较差）。
-3. **自定义网络：** 如果是应用级数据（如 API 调用结果），容器可以通过连接到同一自定义网络，利用网络通信共享数据。
+Docker镜像是通过一系列只读层构建的，Dockerfile中的每个指令（如 `FROM`, `RUN`, `COPY`）通常都会创建一个新层
 
-### 如何在 CI/CD 流水线中使用 Docker？
+- **特点：** 这些层是只读的，可以共享，且利用缓存
+- **容器层：** 当容器启动时，Docker 在只读镜像层之上添加一个可写层（称为容器层），所有对容器的修改都写入这一层
 
-1. **构建阶段：** CI/CD 服务器签出代码，使用 `docker build` 命令根据 Dockerfile 构建应用的 Docker 镜像。
-2. **测试阶段：** 运行新的镜像作为容器，执行单元测试、集成测试。
-3. **发布阶段：** 使用 `docker tag` 为镜像打上版本标签，并使用 `docker push` 推送到 Docker Registry（如 Docker Hub 或私有 Registry）。
-4. **部署阶段：** 编排工具（如 Kubernetes）从 Registry 拉取新镜像并部署到生产集群。
+### 如何使用Docker管理容器日志
 
-### `docker pull` 和 `docker push` 命令在 Docker Registry 中的意义是什么？
+Docker提供了日志驱动程序(Logging Drivers)来管理日志
 
-- **`docker pull`：** 从 Registry **下载**一个镜像到本地机器。
-- **`docker push`：** 将本地构建或标记的镜像**上传**到 Registry，使其可供他人或部署环境使用。
-
-### Docker 在微服务架构中的作用是什么？
-
-Docker 是实现微服务架构的**基石**。
-
-- **隔离性：** 每个微服务都可以被打包成一个独立的 Docker 容器，确保服务间的隔离。
-- **部署：** 简化了微服务的部署和管理。
-- **技术无关性：** 允许不同微服务使用不同的技术栈（语言、库），因为它们都被容器化了。
-- **可扩展性：** 容器编排工具（如 K8s）可以轻松地单独扩展每个微服务。
-
-### 如何对一个非启动 (non-starting) 的 Docker 容器进行故障排除？
-
-1. **查看日志：** 使用 `docker logs <container_id_or_name>` 检查容器启动失败的原因。
-2. **检查状态：** 使用 `docker ps -a` 确认容器的状态（如 `Exited (1)`）。
-3. **检查配置：** 使用 `docker inspect <container_id>` 查看启动命令、环境变量、卷挂载等配置是否正确。
-4. **交互式启动：** 尝试以交互模式运行容器 (`docker run -it --entrypoint /bin/bash <image_name>`)，手动执行容器的启动命令来重现错误。
-
-### Docker Desktop 在本地开发中的作用是什么？
-
-Docker Desktop 是一个适用于 Mac、Windows 和 Linux 的桌面应用程序，它提供了一个完整的 Docker 开发环境。
-
-- **提供 Docker Engine：** 在本地运行 Docker 守护进程。
-- **K8s 集成：** 内置 Kubernetes 单节点集群。
-- **GUI：** 提供图形界面来管理容器、镜像、卷和设置。
-- **文件共享：** 简化了宿主机和容器之间的文件共享配置（绑定挂载）。
-
-### 解释 Docker 中的镜像层 (image layers) 概念
-
-Docker 镜像是通过一系列只读层构建的。Dockerfile 中的每个指令（如 `FROM`, `RUN`, `COPY`）通常都会创建一个新层。
-
-- **特点：** 这些层是只读的，可以共享，且利用缓存。
-- **容器层：** 当容器启动时，Docker 在只读镜像层之上添加一个可写层（称为容器层），所有对容器的修改都写入这一层。
-
-### 如何使用 Docker 管理容器日志？
-
-Docker 提供了日志驱动程序 (Logging Drivers) 来管理日志。
-
-1. **默认驱动 (json-file)：** 将日志存储在宿主机的 JSON 文件中。
+1. **默认驱动 (json-file)：** 将日志存储在宿主机的JSON文件中
 2. **指定驱动：** 在 `docker run` 或 `docker-compose.yml` 中使用 `--log-driver` 标志来配置其他驱动，如：
 
     ```bash
     docker run --log-driver=syslog ...
     ```
 
-### `docker-compose.override.yml` 文件是什么，如何使用它？
+### `docker-compose.override.yml` 文件是什么
 
-- **作用：** 它是一个可选的 Compose 文件，用于**覆盖或扩展**主 `docker-compose.yml` 文件中的配置。
-- **用途：** 常用场景是在**本地开发**中覆盖生产配置，例如：使用不同的镜像标签、启用调试模式、或挂载本地代码进行热重载。
-- **使用：** Compose 会自动查找并合并这两个文件。运行 `docker-compose up` 时，它会读取 `docker-compose.yml` 和 `docker-compose.override.yml`。
+- **作用：** 是一个可选的Compose文件，用于**覆盖或扩展**主 `docker-compose.yml` 文件中的配置
+- **用途：** 常用场景是在**本地开发**中覆盖生产配置，例如：使用不同的镜像标签、启用调试模式、或挂载本地代码进行热重载
+- **使用：** Compose会自动查找并合并这两个文件，运行`docker-compose up`时，它会读取`docker-compose.yml`和`docker-compose.override.yml`
 
-### `docker network create` 的作用是什么？
+### 如何向容器暴露环境变量
 
-用于手动创建自定义网络。
+1. **`docker run -e`：** 在启动容器时，使用 `-e <KEY>=<VALUE>` 标志
+2. **`--env-file`：** 从一个本地文件中读取环境变量列表
+3. **`docker-compose.yml`：** 在服务定义中使用 `environment:` 关键字
 
-- **优势：** 允许用户创建隔离的、命名清晰的网络，并将特定容器连接到这些网络。连接到同一自定义网络的容器可以通过它们的**服务名称**或**容器名称**互相通信，提供更好的服务发现和网络隔离。
+### 如何移除 Docker 中未使用的镜像、容器和卷
 
-### 如何向容器暴露环境变量？
-
-1. **`docker run -e`：** 在启动容器时，使用 `-e <KEY>=<VALUE>` 标志。
-2. **`--env-file`：** 从一个本地文件中读取环境变量列表。
-3. **`docker-compose.yml`：** 在服务定义中使用 `environment:` 关键字。
-
-### `docker inspect` 在调试容器中的作用是什么？
-
-`docker inspect` 是调试容器的**瑞士军刀**
-
-- **作用：** 它提供了容器或镜像的所有低级配置细节，帮助诊断配置错误。
-- **常见检查点：** 网络设置（IP 地址、端口映射）、卷挂载、启动命令（CMD/ENTRYPOINT）、环境变量、健康检查状态和容器的当前状态。
-
-### 如何移除 Docker 中未使用的镜像、容器和卷？
-
-使用 `docker system prune` 命令
+使用`docker system prune`命令
 
 ```bash
 docker system prune
 ```
 
-- 此命令会移除所有停止的容器、未使用的网络、悬挂的（dangling）镜像和构建缓存。
-- 若要移除所有未使用的卷（包括未悬挂的），需使用：`docker volume prune` 或 `docker system prune --volumes`。
+- 此命令会移除所有停止的容器、未使用的网络、悬挂的（dangling）镜像和构建缓存
+- 若要移除所有未使用的卷（包括未悬挂的），需使用：`docker volume prune` 或 `docker system prune --volumes`
 
-### Docker 容器状态有哪些，以及检查状态的命令是什么
+### Docker容器状态有哪些
 
-- **常见状态：** `created`（已创建，未启动）、`running`（正在运行）、`paused`（已暂停）、`restarting`（正在重启）、`exited`（已退出）、`dead`（死亡）。
+- **常见状态：** `created`（已创建，未启动）、`running`（正在运行）、`paused`（已暂停）、`restarting`（正在重启）、`exited`（已退出）、`dead`（死亡）
 - **检查命令：**
-  - `docker ps`：查看 **running** 状态的容器。
-  - `docker ps -a`：查看 **所有** 状态的容器。
-  - `docker inspect <container_id>`：获取容器的详细状态信息。
+  - `docker ps`：查看 **running** 状态的容器
+  - `docker ps -a`：查看 **所有** 状态的容器
+  - `docker inspect <container_id>`：获取容器的详细状态信息
 
 ### 如何配置自动容器重启
 
-在 `docker run` 命令中使用 `--restart` 标志。
+在`docker run`命令中使用`--restart`标志
 
-- **`--restart=no`：** 默认，不自动重启。
-- **`--restart=on-failure`：** 只有当容器以非零状态（即错误状态）退出时才重启。
-- **`--restart=always`：** 无论容器如何退出，Docker 守护进程启动时都会尝试重启容器。
-- **`--restart=unless-stopped`：** 行为与 `always` 类似，但如果用户手动停止容器，则不会在 Docker 守护进程重启时再次启动。
+- **`--restart=no`：** 默认，不自动重启
+- **`--restart=on-failure`：** 只有当容器以非零状态（即错误状态）退出时才重启
+- **`--restart=always`：** 无论容器如何退出，Docker守护进程启动时都会尝试重启容器
+- **`--restart=unless-stopped`：** 行为与`always`类似，但如果用户手动停止容器，则不会在Docker守护进程重启时再次启动
 
------
-
-### 如何在生产环境中管理 Docker 容器安全
+### 如何在生产环境中管理Docker容器安全
 
 采用纵深防御策略：
 
-1. **镜像安全：** 使用经过验证的基础镜像，定期使用漏洞扫描工具（如 Clair, Snyk）扫描镜像。
-2. **最小权限：** 容器以非 Root 用户运行；使用 Seccomp/AppArmor/SELinux 限制容器对内核资源的访问权限。
-3. **主机安全：** 保持宿主机操作系统和 Docker 引擎版本更新；限制对 Docker Daemon Socket 的访问。
-4. **网络隔离：** 实施严格的网络策略，使用自定义网络和网络分段，确保容器只能访问其所需的资源。
-5. **Secrets 管理：** 使用 Docker Secrets (Swarm) 或 Kubernetes Secrets 来安全地存储和注入敏感数据（密码、密钥）。
+1. **镜像安全：** 使用经过验证的基础镜像，定期使用漏洞扫描工具（如Clair, Snyk）扫描镜像
+2. **最小权限：** 容器以非Root用户运行；使用Seccomp/AppArmor/SELinux限制容器对内核资源的访问权限
+3. **主机安全：** 保持宿主机操作系统和Docker引擎版本更新；限制对Docker Daemon Socket的访问
+4. **网络隔离：** 实施严格的网络策略，使用自定义网络和网络分段，确保容器只能访问其所需的资源
+5. **Secrets管理：** 使用Docker Secrets (Swarm)或Kubernetes Secrets来安全地存储和注入敏感数据（密码、密钥）
 
-### 如何配置Docker以实现高可用性(High Availability)和容错(Fault Tolerance)
+### 如何配置Docker以实现高可用性和容错
 
-- **编排工具：** 必须使用容器编排工具（Kubernetes 或 Docker Swarm）。
-- **多副本：** 在 Service 定义中设置多个副本（Replicas \> 1），确保单个容器故障不会导致服务中断。
-- **跨主机部署：** 将副本分散到多个物理或虚拟主机上，防止单个主机故障。
-- **健康检查：** 配置 `HEALTHCHECK`，使编排器能够检测不健康的容器并自动替换它们。
-- **持久化存储：** 将状态数据存储在集中式、高可用的外部存储系统（如云提供商的存储、分布式文件系统），而不是本地磁盘。
-
-### Docker Registry的作用是什么，如何管理您的私有Registry
-
-- **作用：** 注册中心用于存储、分发和版本控制 Docker 镜像。它充当了应用部署的单一可信来源 (Single Source of Truth)。
-- **管理私有 Registry：**
-    1. **自托管 (Self-Hosted)：** 使用 Docker Registry 官方镜像进行部署，并配置 TLS/SSL 和基本身份验证。
-    2. **云服务 (Cloud Services)：** 使用云提供商的托管服务（如 AWS ECR, Google GCR, Azure ACR），它们通常提供更高的可用性、更好的安全性（IAM 集成）和自动漏洞扫描。
+- **编排工具：** 必须使用容器编排工具（Kubernetes或Docker Swarm）
+- **多副本：** 在Service定义中设置多个副本（Replicas > 1），确保单个容器故障不会导致服务中断
+- **跨主机部署：** 将副本分散到多个物理或虚拟主机上，防止单个主机故障
+- **健康检查：** 配置`HEALTHCHECK`，使编排器能够检测不健康的容器并自动替换它们
+- **持久化存储：** 将状态数据存储在集中式、高可用的外部存储系统（如云提供商的存储、分布式文件系统），而不是本地磁盘
 
 ### 如何使用Docker和Kubernetes设置CI/CD流水线
 
@@ -1067,37 +1015,32 @@ docker system prune
       - 更新 Kubernetes Deployment YAML 文件中的镜像标签。
       - 应用更新后的 Deployment，Kubernetes 自动执行滚动更新，拉取新镜像，并替换旧 Pod。
 
-### 解释Docker in Docker(DinD)的概念及其使用场景
+### 解释Docker-in-Docker和Docker-outside-of-Docker
 
-- **概念：** DinD 意味着在一个 Docker 容器内部运行另一个完整的 Docker 环境（包括 Docker Daemon）。
-- **实现方式：** 通常通过将宿主机的 `/var/run/docker.sock` 挂载到容器中来实现，允许容器内的 Docker 客户端直接与宿主机的 Docker Daemon 通信。
-- **使用场景：** 主要用于 CI/CD 流水线中需要**构建 Docker 镜像**的场景。例如，Jenkins 容器需要构建应用程序镜像，然后推送到 Registry。
+Docker in Docker (DinD) 和 Docker outside of Docker (DoD) 是两种在容器化环境中使用Docker的不同方法：
 
-### 如何使用 Kubernetes vs Docker Swarm 管理和编排容器
+- **Docker-in-Docker (DinD)：** 在一个Docker容器内部运行另一个完整的Docker环境（包括Docker Daemon）
+  - **实现方式**：通过在容器内安装Docker引擎，并启动一个独立的Docker Daemon，优势是完全隔离的Docker环境，但缺点是性能开销较大，且存在安全风险（需要privileged mode）
+  - **使用场景：** 主要用于CI/CD流水线中需要完全隔离的Docker环境，或是需要可复现的构建环境
+- **Docker-outside-of-Docker (DoD)：** 容器内的Docker客户端直接与宿主机的Docker Daemon通信，而不是在容器内运行一个独立的Docker实例
+  - **实现方式：** 通常通过将宿主机的 `/var/run/docker.sock` 挂载到容器中来实现，允许容器内的Docker客户端直接与宿主机的Docker Daemon通信，优势是避免了DinD的复杂性和性能开销，但是与宿主机共享Docker环境，存在安全风险
+  - **使用场景**：适用于需要管理宿主机Docker资源的场景，如部署工具或监控工具，以及CI/CD流水线中需要与宿主机Docker交互的情况
 
-| 特性                | Kubernetes (K8s)                                           | Docker Swarm                                 |
-| :------------------ | :--------------------------------------------------------- | :------------------------------------------- |
-| **核心抽象**        | Pod, Deployment, Service, Ingress, Volume                  | Service, Node, Task                          |
-| **可扩展性/复杂性** | 高度可扩展，功能全面，但学习曲线陡峭。                     | 简单快速，原生集成，功能相对较少。           |
-| **网络**            | 复杂，需要 CNI 插件（如 Calico），提供高级网络策略。       | 简单，Overlay 网络是内置的。                 |
-| **自动扩展**        | 内置 HPA (Horizontal Pod Autoscaler)，支持复杂的扩展策略。 | 基于副本数量的简单扩展。                     |
-| **适用场景**        | 大规模、复杂的微服务、多云/混合云环境。                    | 快速部署、小型应用、或刚开始使用编排的团队。 |
+### 什么是Docker镜像漏洞，如何扫描Docker镜像中的安全漏洞
 
-### 什么是 Docker 镜像漏洞，以及如何扫描 Docker 镜像中的安全漏洞
-
-- **镜像漏洞：** 指 Docker 镜像中包含的基础操作系统库、软件包或应用程序依赖项中存在的已知安全缺陷。
+- **镜像漏洞：** 指 Docker 镜像中包含的基础操作系统库、软件包或应用程序依赖项中存在的已知安全缺陷
 - **扫描方法：** 使用专业的镜像漏洞扫描工具（集成在 CI/CD 流程中）：
-    1. **Clair：** 开源工具，用于静态分析容器镜像中的已知漏洞。
-    2. **Snyk：** 商业工具，可以扫描操作系统依赖和应用依赖中的漏洞。
-    3. **Registry 集成：** Docker Hub、AWS ECR 等许多 Registry 都内置了基本或高级的漏洞扫描功能。
+    1. **Clair：** 开源工具，用于静态分析容器镜像中的已知漏洞
+    2. **Snyk：** 商业工具，可以扫描操作系统依赖和应用依赖中的漏洞
+    3. **Registry 集成：** Docker Hub、AWS ECR 等许多 Registry 都内置了基本或高级的漏洞扫描功能
 
-### 如何使用 Docker 实现蓝/绿部署 (Blue-Green Deployments)
+### 如何使用Docker实现蓝/绿部署
 
 蓝/绿部署是一种零停机部署策略：
 
-1. **“蓝”环境 (Blue)：** 当前生产环境，运行着旧版本应用 V1。
-2. **“绿”环境 (Green)：** 部署新环境，运行新版本应用 V2。
-3. **测试：** 在“绿”环境中进行全面的自动化和手动测试。
-4. **流量切换：** 使用负载均衡器或编排工具的 Ingress Controller，将所有生产流量从“蓝”环境**瞬间切换**到“绿”环境。
-5. **保持旧环境：** 将“蓝”环境保留一段时间作为回滚（Rollback）环境。如果“绿”环境出现问题，可以立即将流量切回“蓝”环境。
-    *在 Docker Swarm 或 Kubernetes 中，这通过管理 Service 或 Ingress 资源来实现。*
+1. **“蓝”环境 (Blue)：** 当前生产环境，运行着旧版本应用V1
+2. **“绿”环境 (Green)：** 部署新环境，运行新版本应用V2
+3. **测试：** 在“绿”环境中进行全面的自动化和手动测试
+4. **流量切换：** 使用负载均衡器或编排工具的 Ingress Controller，将所有生产流量从“蓝”环境**瞬间切换**到“绿”环境
+5. **保持旧环境：** 将“蓝”环境保留一段时间作为回滚（Rollback）环境。如果“绿”环境出现问题，可以立即将流量切回“蓝”环境
+    *在 Docker Swarm 或 Kubernetes 中，这通过管理 Service 或 Ingress 资源来实现*
