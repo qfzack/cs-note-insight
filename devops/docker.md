@@ -561,9 +561,7 @@ echo 100 > /sys/fs/cgroup/my_cgroup/pids.max
 - [Docker Interview Questions](https://www.wecreateproblems.com/interview-questions/docker-interview-questions)
 - [100+ must know Docker interview questions and answers 2025](https://www.turing.com/interview-questions/docker)
 
-### 基础概念
-
-#### 什么是Docker
+### 什么是Docker
 
 Docker 是一个开源的平台，用于开发、发布和运行应用程序
 
@@ -571,7 +569,7 @@ Docker 是一个开源的平台，用于开发、发布和运行应用程序
 
 Docker 的核心优势是可移植性。一旦创建了 Docker 镜像，它就可以在任何支持 Docker 的系统上执行，确保跨环境的一致性。由于能够简化应用程序部署和扩展，Docker 在 DevOps、持续集成/持续部署 (CI/CD) 流程和云计算中被广泛使用
 
-#### Docker中的容器是什么
+### Docker中的容器是什么
 
 Docker容器是镜像的运行实例，在轻量级虚拟化环境中作为隔离程序执行，容器包含了应用程序执行所需的程序代码、系统工具、库和设置，容器允许开发人员以标准化的方式在不同环境中构建、打包和运行应用程序
 
@@ -582,7 +580,7 @@ Docker容器是镜像的运行实例，在轻量级虚拟化环境中作为隔�
 - **隔离**：每个容器在自己的隔离环境中执行
 - **快速启动**：容器可以在几秒钟内启动
 
-#### Docker与虚拟机(Virtual Machines)有何不同
+### Docker与虚拟机(Virtual Machines)有何不同
 
 Docker和虚拟机都提供了隔离应用程序的方法，但它们的方式根本不同。虚拟机是物理硬件的抽象，每个VM都是在主机OS之上执行完整的操作系统，这意味着每个VM都包含自己完整的OS，以及应用程序及其依赖项，相比之下，Docker容器虚拟化OS本身而不是硬件，直接在主机的OS内核上执行应用程序
 
@@ -596,7 +594,7 @@ Docker和虚拟机都提供了隔离应用程序的方法，但它们的方式�
 
 总结：Docker容器适用于需要快速启动、可移植性和效率的场景，如微服务、云原生应用程序和CI/CD工作流程。VM则更适合需要完整OS级隔离或执行旧版软件的应用程序
 
-#### Docker镜像的用途是什么
+### Docker镜像的用途是什么
 
 Docker镜像（Image）是用于创建Docker容器的只读模板，它包含了容器运行时所需的文件系统、代码、依赖项和配置信息，本质上镜像是环境的快照，可以确保应用在不同环境中的一致性
 
@@ -604,13 +602,13 @@ Docker镜像（Image）是用于创建Docker容器的只读模板，它包含了
 
 镜像不可变，一旦创建就无法更改，只能重新构建，这保证了Docker镜像的可靠性和一致性
 
-#### 什么是Dockerfile
+### 什么是Dockerfile
 
 Dockerfile是一个文本文件，包含一系列用于构建Docker镜像的指令，用于自动化创建Docker镜像
 
 Dockerfile的主要目标是为Docker镜像创建可重现的构建流程，确保每次构建镜像时都遵循相同的步骤
 
-#### Docker守护进程 (Docker Daemon) 的作用是什么
+### Docker守护进程 (Docker Daemon) 的作用是什么
 
 Docker Daemon（也称为`dockerd`）是Docker的核心组件，运行在宿主机上，负责监听Docker API请求，并管理Docker对象，例如镜像、容器、网络和存储卷，是Docker引擎的控制中心
 
@@ -622,7 +620,7 @@ Docker Daemon（也称为`dockerd`）是Docker的核心组件，运行在宿主�
 - 管理镜像构建和缓存
 - 促进容器之间的网络连接
 
-#### 什么是 Docker Hub
+### 什么是 Docker Hub
 
 Docker Hub是Docker官方提供的公共注册中心（Registry），允许用户和团队存储、共享和管理Docker镜像，它是一个大型的公共镜像仓库，包含数百万个社区和官方镜像
 
@@ -843,12 +841,89 @@ CMD ["./myapp"]
 
 ### 如何保护Docker容器的安全
 
-1. **最小化基础镜像：** 使用Alpine或Distroless等最小化镜像以减少攻击面
-2. **非 Root 用户运行：** 在Dockerfile中使用`USER`指令，避免以`root`身份运行容器内进程
-3. **最小化权限：** 遵循最小权限原则，限制容器的capabilities
-4. **扫描漏洞：** 使用Snyk或Clair等工具扫描镜像中的已知漏洞
-5. **只读文件系统：** 使用`--read-only`标志运行容器，以防止运行时写入
-6. **安全配置：** 使用Seccomp/AppArmor/SELinux等工具增强内核级的隔离
+在生产环境中管理Docker容器安全性需要最佳实践、配置管理和工具的组合，以最小化漏洞并确保容器被隔离和安全，主要策略包括：
+
+**1. 使用最小基础镜像**：
+使用最小基础镜像（如Alpine Linux）减少攻击面：
+
+```dockerfile
+FROM alpine:latest
+```
+
+**2. 以非 root 用户执行容器**：
+避免以root执行容器，在Dockerfile中创建并使用非特权用户：
+
+```dockerfile
+RUN adduser -D myuser
+USER myuser
+```
+
+**3. 扫描镜像漏洞**：
+使用工具扫描镜像中的已知漏洞：
+
+- Docker Scan
+- Trivy
+- Clair
+- Snyk
+
+```bash
+docker scan my-image
+trivy image my-image
+```
+
+**4. 限制容器功能**：
+使用`--cap-drop`和`--cap-add`移除不必要的Linux功能：
+
+```bash
+docker run --cap-drop ALL --cap-add NET_BIND_SERVICE my-image
+```
+
+**5. 使用只读文件系统**：
+当可能时，使用只读文件系统执行容器：
+
+```bash
+docker run --read-only my-image
+```
+
+**6. 实施资源限制**：
+限制容器可以使用的 CPU 和内存：
+
+```bash
+docker run --memory="512m" --cpus="1.0" my-image
+```
+
+**7. 使用Docker Secrets**：
+对于敏感数据，使用Docker Secrets（在Swarm中）或Kubernetes Secrets：
+
+```bash
+echo "mysecret" | docker secret create my_secret -
+docker service create --secret my_secret my-image
+```
+
+**8. 启用 Docker Content Trust**：
+启用 Content Trust 以确保镜像的真实性：
+
+```bash
+export DOCKER_CONTENT_TRUST=1
+```
+
+**9. 网络隔离**：
+使用自定义网络隔离容器并限制不必要的通信
+
+**10. 定期更新**：
+保持Docker、基础镜像和依赖项更新以修补安全漏洞
+
+**11. 使用安全扫描器**：
+集成安全扫描到 CI/CD 流程：
+
+```bash
+# 在 CI 流程中
+docker build -t my-image .
+trivy image my-image
+```
+
+**12. 实施日志记录和监视**：
+使用日志记录和监视工具跟踪容器行为并检测异常
 
 ### `docker exec`与`docker attach`的作用
 
@@ -908,19 +983,57 @@ HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD curl --fail http://local
 
 ### 如何在CI/CD流水线中使用Docker
 
-1. **构建阶段：** CI/CD服务器签出代码，使用`docker build`命令根据Dockerfile构建应用的Docker镜像
-2. **测试阶段：** 运行新的镜像作为容器，执行单元测试、集成测试
-3. **发布阶段：** 使用 `docker tag` 为镜像打上版本标签，并使用 `docker push` 推送到 Docker Registry（如 Docker Hub 或私有 Registry）
-4. **部署阶段：** 编排工具（如 Kubernetes）从 Registry 拉取新镜像并部署到生产集群
+Docker 在 CI/CD 流程中被广泛用于一致、可重复的建构、测试和部署。以下是 Docker 如何融入 CI/CD 流程：
+
+**1. 建构阶段**：
+
+- 开发人员将程式码提交到版本控制系统（如 Git）
+- CI 工具（Jenkins、GitLab CI、CircleCI）触发建构
+- Docker 镜像从 Dockerfile 建构，确保一致的环境
+
+**2. 测试阶段**：
+
+- 从建构的镜像创建容器
+- 在容器内执行自动化测试
+- 容器提供隔离的测试环境
+
+**3. 推送阶段**：
+
+- 成功的建构被标记并推送到 Docker 注册表（Docker Hub、私有注册表）
+- 镜像被版本化以便追踪
+
+**4. 部署阶段**：
+
+- 镜像从注册表拉取到生产环境
+- 容器使用编排工具（Kubernetes、Docker Swarm）部署
+- 可以实现滚动更新以实现零停机时间
+
+**5. 监视和回滚**：
+
+- 监视容器的健康和效能
+- 如果出现问题，轻松回滚到以前的镜像版本
 
 ### Docker在微服务架构中的作用是什么
 
-Docker是实现微服务架构的**基石**
+在微服务架构中，应用程式被分解为更小的独立服务，每个服务都有自己的功能和资料库，Docker在促进微服务的开发、部署和扩展方面发挥著关键作用：
 
-- **隔离性：** 每个微服务都可以被打包成一个独立的 Docker 容器，确保服务间的隔离
-- **部署：** 简化了微服务的部署和管理
-- **技术无关性：** 允许不同微服务使用不同的技术栈（语言、库），因为它们都被容器化了
-- **可扩展性：** 容器编排工具（如 K8s）可以轻松地单独扩展每个微服务
+**1. 隔离**：
+每个微服务在自己的容器中执行，确保隔离和独立性。这允许不同的服务使用不同的技术堆叠
+
+**2. 可携性**：
+Docker容器可以在任何环境中一致执行，使微服务易于在开发、测试和生产之间移动
+
+**3. 可扩展性**：
+单个微服务可以独立扩展，如果一个服务遇到高流量，你可以扩展该服务的容器实例，而不影响其他服务
+
+**4. 快速部署**：
+容器启动速度快，允许快速部署和更新微服务
+
+**5. 版本控制**：
+每个微服务可以独立版本化和更新，无需重新部署整个应用程式
+
+**6. 编排**：
+Docker 与编排工具（如 Kubernetes 和 Docker Swarm）配合良好，这些工具有助于大规模管理微服务，确保自动化部署、扩展和监视
 
 ### 如何对一个非启动 (non-starting) 的Docker容器进行故障排除
 
