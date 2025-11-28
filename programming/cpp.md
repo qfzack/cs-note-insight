@@ -1258,3 +1258,748 @@ CMake提供的方法：
         # 条件为假时执行的命令
     endif()
     ```
+
+# 常见面试题
+
+## 什么是指针
+
+指针是一个变量，它存储了另一个变量的内存地址，通过指针可以直接访问和操作内存中的数据
+
+在64位系统中，指针通常占用8个字节（64位），而在32位系统中，指针占用4个字节（32位）
+
+```cpp
+#include <iostream>
+using namespace std;
+
+class Test {
+  public:
+    int add (int a, int b) {
+      return 0;
+    }
+}
+
+int main() {
+  int* p = nullptr; // 定义一个空指针
+  int a = 10;
+  p = &a; // 将指针指向变量a的地址
+  cout << a << endl; // 输出变量a的值
+  cout << *p << endl; // 通过指针访问变量a的值
+  cout << &a << endl; // 输出变量a的地址
+  cout << p << endl; // 输出指针p的值（变量a的地址）
+
+  // 指向函数的指针
+  Test obj;
+  int (Test::*funcPtr)(int, int)； // 定义一个指向成员函数的指针
+  funcPtr = &Test::add; // 将指针指向成员函数add
+  cout << (obj.*funcPtr)() << endl; // 通过指针调用
+  return 0;
+}
+```
+
+指针可以指向不同类型的数据，包括基本数据类型、数组、结构体和函数等
+
+this指针是C++中一个隐含的指针参数，编译器会在每个非静态成员函数中自动添加一个this指针，指向调用该成员函数的对象本身
+
+指针的`p->member`运算符用于访问指针所指向的对象的成员，相当于先解引用指针再访问成员，等价于`(*ptr).member`
+
+## 野指针和悬空指针
+
+悬空指针: 指向已经被释放或无效内存的指针
+野指针: 未初始化或指向未知内存地址的指针
+
+```cpp
+#include <iostream>
+using namespace std;
+
+int main() {
+  int* p; // 野指针，未初始化
+  cout << *p << endl; // 未定义行为
+
+  int* q = new int(10); // 动态分配内存
+  delete q; // 释放内存
+  cout << *q << endl; // 悬空指针，未定义行为
+
+  return 0;
+}
+```
+
+## 指针和引用的区别
+
+1. 定义方式不同: 指针使用`*`符号定义，引用使用`&`符号定义
+2. 初始化要求不同: 指针可以在定义后赋值，引用必须在定义时初始化
+3. 空值处理不同: 指针可以指向空值（nullptr），引用必须引用一个有效的对象
+4. 语法使用不同: 访问指针需要解引用操作符`*`，引用可以直接使用
+5. 内存地址不同: 指针变量本身有自己的内存地址，引用没有独立的内存地址
+6. 修改指向不同: 指针可以改变指向的对象，引用一旦绑定后不能改变指向
+7. 数组和函数参数传递不同: 指针可以用于数组和函数参数传递，引用更适合用于函数参数传递以避免拷贝开销
+
+```cpp
+#include <iostream>
+using namespace std;
+
+int a = 10;
+int* p = &a; // 指针
+int& r = a;  // 引用
+
+void modifyPointer(int* p) {
+  *p = 20; // 修改指针指向的值
+}
+
+void modifyReference(int& r) {
+  r = 20; // 修改引用指向的值
+}
+```
+
+## 值、引用和指针参数传递
+
+值传递: 传递变量的副本，函数内对参数的修改不会影响原始值
+指针传递: 传递指针的副本，因此本质也是值传递，函数内可以通过指针修改指向的原始值，但不能改变指针本身的地址
+引用传递: 传递变量的别名，不会复制原变量，函数内对引用的修改会直接影响原始值
+
+## 常量指针和指针常量
+
+常量指针: 指向常量的指针，指针所指向的值不能被修改，但指针本身可以改变指向
+指针常量: 指针本身是常量，指针的值（地址）不能被修改，但可以通过指针修改所指向的值
+
+```cpp
+#include <iostream>
+using namespace std;
+int main() {
+  int a = 10;
+  int b = 20;
+
+  // 常量指针
+  const int* p1 = &a; // 指向常量的指针
+  // *p1 = 15; // 错误，不能修改指向的值
+  p1 = &b; // 可以改变指针的指向
+
+  // 指针常量
+  int* const p2 = &a; // 指针常量
+  *p2 = 15; // 可以修改指向的值
+  // p2 = &b; // 错误，不能改变指针的指向
+
+  return 0;
+}
+```
+
+## 指针函数和函数指针
+
+指针函数: 返回指针类型的函数
+函数指针: 指向函数的指针，可以用来调用函数
+
+```cpp
+#include <iostream>
+using namespace std;
+
+// 指针函数
+int* getPointer(int& a) {
+  return &a; // 返回变量a的地址
+}
+
+// 函数指针
+int add(int a, int b) {
+  return a + b;
+}
+
+int main() {
+  int x = 10;
+  int* p = getPointer(x); // 调用指针函数
+  cout << *p << endl; // 输出变量x的值
+
+  // 定义函数指针
+  int (*funcPtr)(int, int) = add; // 指向函数add
+  cout << funcPtr(5, 10) << endl; // 通过函数指针调用函数
+
+  return 0;
+}
+```
+
+## 全局变量定义在头文件有什么问题
+
+当全局变量定义在头文件中，头文件被多个源文件包含时，每个源文件都会创建一个独立的全局变量副本，这会导致重复定义，因此不能在头文件中定义全局变量，只能声明全局变量，定义放在源文件中
+
+## extent C的作用是什么
+
+当cpp程序需要调用C语言的函数时，需要使用`extern "C"`来告诉编译器按照C语言的方式进行链接，避免C++的名称修饰（name mangling）导致链接错误
+
+```cpp
+extern "C" {
+#include <stdio.h>
+void c_function(); // 声明C语言函数
+}
+void c_function() {
+  printf("Hello from C function!\n");
+}
+int main() {
+  c_function(); // 调用C语言函数
+  return 0;
+}
+```
+
+## struct和class的区别
+
+struct和class的主要区别在于默认的访问权限和继承方式
+
+1. 默认访问权限: struct的成员默认是public的，而class的成员默认是private的
+2. 默认继承方式: struct的继承默认是public的，而class的继承默认是private的
+
+```cpp
+#include <iostream>
+using namespace std;
+
+struct MyStruct {
+  int x; // 默认public
+};
+class MyClass {
+  int y; // 默认private
+};
+
+struct BaseStruct {
+};
+struct DerivedStruct : BaseStruct { // 默认public继承
+  // ...
+};
+
+class Base {
+};
+class Derived : Base { // 默认private继承
+  // ...
+};
+```
+
+struct通常用于简单的数据结构，而class用于更复杂的对象和封装，保留struct的目的是为了兼容C语言和提供更简单的语法
+
+## struct和union的区别
+
+`union`是c/cpp中的一种特殊复合数据类型，允许多个成员共享一段内存，所有成员从同一地址开始存储，但只能同时存储一个成员的值，访问其他成员可能导致未定义行为
+
+因此union通常用于节省内存空间，适用于只需要存储一个成员的场景，union的大小取决于最大成员的大小
+
+```cpp
+#include <iostream>
+using namespace std;
+union MyUnion {
+  int i;
+  float f;
+  char c;
+};
+int main() {
+  MyUnion u;
+  u.i = 10; // 设置整数值
+  cout << u.i << endl; // 输出整数值
+  u.f = 3.14; // 设置浮点值
+  cout << u.f << endl; // 输出浮点值
+  // cout << u.i << endl; // 未定义行为，访问了未设置的整数值
+  return 0;
+}
+```
+
+struct和union的主要区别在于内存布局和成员访问方式
+
+1. 内存布局：
+   - struct的每个成员都有自己的内存空间，结构体的大小是所有成员大小之和
+   - union的所有成员共享同一块内存空间，union的大小是最大成员的大小
+2. 成员访问方式：
+   - struct的每个成员都可以独立访问
+   - union的成员只能访问最后一次赋值的成员，访问其他成员可能导致未定义行为
+
+## static的作用是什么
+
+静态变量主要用于在程序的生命周期内保持变量的值不变，静态函数用于限制函数的作用域，使其只能在定义它的文件内可见
+
+`static`关键字在C++中有多种用途，主要用于控制变量和函数的生命周期和作用域
+
+1. 静态局部变量: 在函数内部使用`static`声明的变量在函数调用结束后仍然保留其值，下次调用时继续使用上次的值
+2. 静态全局变量: 在文件作用域内使用`static`声明的全局变量只能在当前文件内可见，其他文件无法访问
+3. 静态成员变量: 在类中使用`static`声明的成员变量属于类本身而不是类的实例，所有实例共享同一个静态成员变量，派生类也共享基类的静态成员变量
+4. 静态成员函数: 在类中使用`static`声明的成员函数可以在没有类实例的情况下调用，只能访问静态成员变量和静态成员函数
+
+```cpp
+#include <iostream>
+using namespace std;
+
+static int globalVar = 0; // 静态全局变量，只能在当前文件内访问
+
+class MyClass {
+public:
+  static int staticVar; // 静态成员变量 
+  static void staticMethod() { // 静态成员函数
+    cout << "Static Method called" << endl;
+  }
+};
+
+int MyClass::staticVar = 0; // 静态成员变量初始化
+int main() {
+  // 静态局部变量
+  static int count = 0;
+  count++;
+  cout << "Count: " << count << endl; // 每次调用main时count值会增加
+
+  MyClass::staticVar = 10; // 访问静态成员变量
+  cout << "Static Var: " << MyClass::staticVar << endl;
+
+  MyClass::staticMethod(); // 调用静态成员函数
+
+  return 0;
+}
+```
+
+## const的作用是什么
+
+`const`关键字用于定义常量，表示变量的值不可修改，可以用于变量、指针、成员函数等
+
+1. 常量变量: 使用`const`声明的变量在初始化后不能被修改
+2. 常量指针: 指向常量的指针，指针所指向的值不能被修改
+3. 指针常量: 指针本身是常量，指针的值（地址）不能被修改
+4. 常量成员函数: 在类中使用`const`声明的成员函数不能修改类的成员变量
+5. 常量引用: 使用`const`声明的引用不能通过引用修改所引用的对象
+
+```cpp
+#include <iostream>
+using namespace std;
+
+int main() {
+  const int a = 10; // 常量变量
+  // a = 20; // 错误，不能修改常量变量
+
+  const int* p1 = &a; // 指向常量的指针
+  // *p1 = 20; // 错误，不能修改指向的值
+
+  int b = 20;
+  int* const p2 = &b; // 指针常量
+  *p2 = 30; // 可以修改指向的值
+  // p2 = &a; // 错误，不能改变指针的指向
+
+  class MyClass {
+  public:
+    void constMethod() const { // 常量成员函数
+      // memberVar = 10; // 错误，不能修改成员变量
+    }
+  private:
+    int memberVar;
+  };
+
+  const int& r = a; // 常量引用
+  // r = 20; // 错误，不能通过引用修改所引用的对象
+
+  return 0;
+}
+```
+
+## define和const的区别
+
+define是预处理指令，用于定义宏，在编译前进行文本替换，就是简单的文本替换，而const是C++关键字，用于定义常量变量，具有类型检查和作用域
+
+1. 类型安全: `const`具有类型检查，编译器会检查类型是否匹配，而`#define`只是简单的文本替换，没有类型检查
+2. 作用域: `const`遵循C++的作用域规则，可以定义在类、函数或命名空间内，而`#define`在预处理阶段进行替换，没有作用域概念
+3. 调试信息: `const`变量在调试时可以查看其值，而`#define`宏在预处理后无法查看原始定义
+4. 内存占用: `const`变量在内存中有实际的存储空间，而`#define`宏在编译时被替换，不占用内存
+5. 可调试性: 使用`const`变量更容易调试和维护代码，而`#define`宏可能导致难以追踪的问题
+
+```cpp
+#include <iostream>
+using namespace std;
+
+#define PI 3.14 // 宏定义
+const double pi = 3.14; // 常量定义
+int main() {
+  cout << "Macro PI: " << PI << endl; // 使用宏
+  cout << "Const pi: " << pi << endl; // 使用常量
+  return 0;
+}
+```
+
+## define和typedef的区别
+
+`#define`是预处理指令，用于定义宏，在编译前进行文本替换，而`typedef`是C++关键字，用于为已有类型创建新的类型别名
+
+1. 作用不同: `#define`用于定义宏，可以定义常量、函数等，而`typedef`用于创建类型别名
+2. 类型检查: `typedef`具有类型检查，编译器会检查类型是否匹配，而`#define`只是简单的文本替换，没有类型检查
+3. 作用域: `typedef`遵循C++的作用域规则，可以定义在类、函数或命名空间内，而`#define`在预处理阶段进行替换，没有作用域概念
+4. 可读性: 使用`typedef`可以提高代码的可读性，尤其是对于复杂类型，而`#define`宏可能导致代码难以理解
+
+```cpp
+#include <iostream>
+using namespace std;
+
+// typedef实例
+typedef unsigned int uint; // 类型别名
+int main() {
+  uint count = 10; // 使用类型别名
+  cout << "Count: " << count << endl;
+  return 0;
+}
+```
+
+## volatile的作用是什么
+
+`volatile`关键字用于告诉编译器该变量的值可能会在程序的其他部分被修改，防止编译器对该变量进行优化，确保每次访问该变量时都从内存中读取最新的值
+
+`volatile`不具有原子性，不能替代锁机制来保证多线程环境下的同步，因此在多线程编程中，`volatile`只能确保变量的可见性，但不能保证操作的原子性，可以和const一起使用，表示变量的值可能会被外部修改，但程序不能修改该值
+
+主要使用场景：
+
+1. 多线程编程: 当多个线程可能同时访问和修改同一个变量时，使用`volatile`可以确保每个线程都能看到变量的最新值
+2. 硬件寄存器访问: 在嵌入式编程中，访问硬件寄存器时，使用`volatile`可以防止编译器优化对寄存器的访问，确保每次读取都是最新的硬件状态
+3. 信号处理: 在处理异步信号时，使用`volatile`可以确保信号处理函数能够正确访问和修改共享变量
+4. 防止优化: 当变量的值可能在程序的其他部分被修改时，使用`volatile`可以防止编译器对该变量进行优化，确保每次访问都是最新的值
+
+```cpp
+#include <iostream>
+using namespace std;
+
+volatile int flag = 0; // 声明一个volatile变量
+void threadFunction() {
+  while (flag == 0) {
+    // 等待flag变为非零
+  }
+  cout << "Flag changed!" << endl;
+}
+
+int main() {
+  flag = 1; // 修改volatile变量
+  return 0;
+}
+```
+
+## 虚函数和纯虚函数的区别
+
+- 虚函数: 在基类中使用`virtual`关键字声明的成员函数，可以在派生类中重写，实现动态绑定，根据对象的实际类型调用相应的函数版本
+  - 只有虚函数才能被重写，如果基类中的函数不是虚函数，派生类中定义同名函数不会覆盖基类的函数，而是隐藏它（重载也要基于虚函数，否则同名方法会被隐藏）
+
+  ```cpp
+  class Base {
+  public:
+    void func() { cout << "Base func" << endl; }
+  };
+  class Derived : public Base {
+  public:
+    void func() { cout << "Derived func" << endl; } // 隐藏基类的func
+  };
+
+  Base* obj = new Derived();
+  obj->func(); // 调用Base的func，输出"Base func"
+
+  Derived* derivedObj = new Derived();
+  derivedObj->func(); // 输出"Derived func"
+  ```
+
+- 纯虚函数: 在基类中声明但不提供实现的虚函数，使用`= 0`语法，派生类必须重写纯虚函数，否则派生类也成为抽象类，不能实例化
+  - 抽象类: 包含至少一个纯虚函数的类，不能直接实例化，只能通过派生类来实现纯虚函数后实例化，cpp中使用纯虚函数来定义接口，强制派生类实现特定的功能
+  - 纯虚函数用于定义接口，强制派生类实现特定的功能
+
+  ```cpp
+  class AbstractBase {
+  public:
+    virtual void pureVirtualFunc() = 0; // 纯虚函数
+  };
+  class ConcreteDerived : public AbstractBase {
+  public:
+    void pureVirtualFunc() override { cout << "ConcreteDerived implementation" << endl; }
+  };
+  AbstractBase* obj = new ConcreteDerived();
+  obj->pureVirtualFunc(); // 输出"ConcreteDerived implementation"
+  ```
+
+## 动态绑定和静态绑定的区别
+
+静态绑定: 在编译时确定函数调用的具体实现，基于对象的静态类型进行绑定，适用于非虚函数调用，编译器根据指针或引用的类型决定调用哪个函数版本
+动态绑定: 在运行时根据对象的实际类型确定函数调用的具体实现，适用于虚函数调用，通过虚函数表实现，根据对象的实际类型调用相应的函数版本
+
+静态类型： 指变量在编译时的类型，由变量的声明决定
+动态类型： 指变量在运行时的实际类型，由对象的创建决定
+
+cpp的多态发生在运行时，通过动态类型决定虚函数的调用，但是编译器的类型检查是基于静态类型的，一般情况下，静态类型决定了可以调用哪些成员函数，而动态类型决定了实际调用哪个版本的虚函数
+
+## 虚函数表和虚指针
+
+虚函数表（vtable）
+
+- 每个包含虚函数的类都有一个虚函数表，存储该类的虚函数地址，用于实现动态绑定
+- 虚函数表就是一个指针数组，数组中的每个元素都是一个虚函数的地址，当通过基类指针调用虚函数时，程序会查找虚函数表，根据对象的实际类型找到对应的虚函数地址并调用
+
+虚指针（vptr）
+
+- 每个包含虚函数的对象都有一个隐藏的指针，指向该对象所属类的虚函数表，用于在运行时查找虚函数的地址，实现动态绑定
+
+## 虚函数的调用过程
+
+当通过基类指针或引用调用虚函数时，程序会执行以下步骤:
+
+1. 通过对象的虚指针（vptr）找到对应的虚函数表（vtable）
+2. 在虚函数表中查找对应的虚函数地址
+3. 调用找到的虚函数地址，实现动态绑定
+
+## 析构函数为什么设置为虚函数
+
+析构函数是类的一种特殊成员函数，用于在对象生命周期结束时执行清理操作，如释放资源、关闭文件等，析构函数的名称与类名相同，前面加上波浪号`~`，不接受参数且没有返回值
+
+虚函数是一种允许在派生类中重写基类函数的机制，通过在基类中将函数声明为`virtual`，可以实现动态绑定，根据对象的实际类型调用相应的函数版本
+
+将析构函数设置为虚函数的主要原因是为了确保在通过基类指针删除派生类对象时，能够正确调用派生类的析构函数，避免资源泄漏和未定义行为
+
+```cpp
+#include <iostream>
+using namespace std;
+
+class Base {
+public:
+  virtual ~Base() { // 虚析构函数
+    cout << "Base Destructor" << endl;
+  }
+};
+
+class Derived : public Base {
+public:
+  ~Derived() { // 派生类析构函数
+    cout << "Derived Destructor" << endl;
+  }
+};
+
+int main() {
+  Base* obj = new Derived(); // 基类指针指向派生类对象
+  delete obj; // 先调用Derived的析构函数，再调用Base的析构函数
+  return 0;
+}
+```
+
+**析构函数的执行顺序**: 当通过基类指针删除派生类对象时，首先调用派生类的析构函数，然后调用基类的析构函数，确保派生类的资源先被释放，避免资源泄漏
+
+如果这里obj的类型是Derived*，那么无论基类的析构函数是否是虚函数，都会正确调用Derived的析构函数，因为静态类型和动态类型都是Derived
+
+如果基类的析构函数不是虚函数，就是静态绑定：obj的静态类型是Base，即使动态类型是Derived，也只会调用Base的析构函数
+
+## 内联函数inline是什么
+
+内联函数是一种通过在函数定义前加上`inline`关键字来**建议编译器**将函数调用替换为函数体的机制，目的是减少函数调用的开销，提高程序的执行效率
+
+内联函数的主要特点:
+
+1. 减少函数调用开销: 通过将函数调用替换为函数体，避免了函数调用的开销，如参数传递、栈帧创建等
+2. 提高执行效率: 对于频繁调用的小函数，内联函数可以提高程序的执行效率
+3. 编译器优化: 编译器可以根据具体情况决定是否将函数内联，通常对于小函数和频繁调用的函数更倾向于内联
+4. 代码膨胀: 过多的内联函数可能导致生成的代码体积增大，影响缓存性能
+
+适用于内联函数的场景:
+
+- 小函数: 函数体较小，执行时间短的函数适合内联
+- 频繁调用的函数: 在程序中被频繁调用的函数适合内联
+- 简单的访问器函数: 如getter和setter函数适合内联
+- 模板函数: 模板函数通常适合内联，以提高性能
+
+宏是预处理阶段的文本替换，不具备类型检查和作用域，而内联函数是C++语言的一部分，是编译器优化的函数展开，具有类型检查和作用域，更安全和灵活
+
+```cpp
+#include <iostream>
+using namespace std;
+
+inline int add(int a, int b) { // 内联函数
+  return a + b;
+}
+
+int main() {
+  int result = add(5, 10); // 调用内联函数
+  cout << "Result: " << result << endl;
+  return 0;
+}
+```
+
+## include的<>和""的区别
+
+`#include <filename>`用于包含标准库头文件或系统头文件，编译器会在系统预定义的目录中搜索该文件，常用于包含标准库头文件
+`#include "filename"`用于包含用户自定义的头文件，编译器首先在当前源文件所在的目录中搜索该文件，如果未找到，再在系统预定义的目录中搜索，常用于包含项目中的自定义头文件
+
+## 编译中的静态库和动态库的区别
+
+静态库（Static Library）: 在编译时将库文件的代码直接链接到可执行文件中，生成独立的可执行文件，运行时不依赖外部库文件
+动态库（Dynamic Library）: 在运行时加载库文件，生成的可执行文件较小，运行时需要依赖外部库文件，可以实现代码共享和节省内存空间
+
+主要区别:
+
+1. 链接时机: 静态库在编译时链接，动态库在运行时加载
+2. 可执行文件大小: 静态库生成的可执行文件较大，动态库生成的可执行文件较小
+3. 依赖关系: 静态库不依赖外部库文件，动态库需要依赖外部库文件
+4. 代码共享: 动态库可以实现多个程序共享同一份库代码，节省内存空间
+5. 更新和维护: 动态库可以独立更新和维护，静态库需要重新编译可执行文件
+6. 性能: 静态库在运行时性能较好，因为函数调用直接链接到可执行文件中，而动态库在运行时需要进行地址重定位，可能会有一定的性能开销
+7. 平台依赖性: 动态库通常与操作系统和硬件平台相关，不同平台可能需要不同的动态库版本，而静态库在编译时已经链接到可执行文件中，具有更好的跨平台兼容性
+
+静态库和动态库的生成方式：
+
+```bash
+# 生成静态库
+g++ -c mylib.cpp -o mylib.o
+ar rcs libmylib.a mylib.o # 将目标文件mylib.o打包成静态库libmylib.a
+
+# 生成动态库
+g++ -shared -fPIC mylib.cpp -o libmylib.so # 创建动态库libmylib.so
+
+# 编译并链接动态库
+g++ main.cpp -L. -lmylib -o myprogram # 参数-L指定库路径，-l指定库名(一般省略lib前缀和文件后缀)，生成可执行文件myprogram
+```
+
+## cpp的多态是如何实现的
+
+多态是面向对象编程中的一个重要特性，允许不同类的对象通过相同的接口调用不同的实现，实现代码的灵活性和可扩展性
+
+cpp的多态有两种形式:
+
+- 编译时多态（静态多态）：通过函数重载和运算符重载实现，在编译时根据参数类型和数量决定调用哪个函数版本
+- 运行时多态（动态多态）：通过虚函数和虚函数表（vtable）实现，在运行时根据对象的实际类型调用相应的函数版本，实现动态绑定
+
+```cpp
+#include <iostream>
+using namespace std;
+
+class Base {
+public:
+  virtual void show() { // 虚函数
+    cout << "Base show" << endl;
+  }
+};
+
+class Derived : public Base {
+public:
+  void show() override { // 重写虚函数
+    cout << "Derived show" << endl;
+  }
+};
+
+int main() {
+  Base* obj = new Derived(); // 基类指针指向派生类对象
+  obj->show(); // 调用Derived的show，输出"Derived show"，实现多态
+  delete obj;
+  return 0;
+}
+```
+
+## cpp的函数对象是什么
+
+函数对象（Function Object），也称为仿函数（Functor），是一个重载了`operator()`的类或结构体实例，可以像函数一样被调用
+
+`operator()`是C++中的函数调用运算符，通过重载该运算符，可以使类的实例表现得像函数一样，可以直接使用括号`()`进行调用
+
+```cpp
+#include <iostream>
+using namespace std;
+
+class Adder {
+public:
+  Adder(int value) : value_(value) {}
+  int operator()(int x) { // 重载operator()
+    return value_ + x;
+  }
+private:
+  int value_;
+};
+
+int main() {
+  Adder add5(5); // 创建函数对象，初始化为5
+  cout << add5(10) << endl; // 调用函数对象，输出15
+  return 0;
+}
+```
+
+## 空class的大小
+
+空class在C++中至少占用1个字节的内存空间，以确保每个对象都有唯一的地址，尽管类中没有成员变量，但编译器仍然需要为每个对象分配内存地址
+
+```cpp
+#include <iostream>
+using namespace std;
+
+class EmptyClass {
+};
+
+int main() {
+  cout << "Size of EmptyClass: " << sizeof(EmptyClass) << " byte(s)" << endl; // 输出1
+  return 0;
+}
+```
+
+## 模板是什么
+
+模板是C++中的一种泛型编程机制，允许定义通用的类或函数，可以在实例化时指定具体的类型，实现代码的复用和灵活性
+
+模板分为两种类型:
+
+1. 函数模板: 用于定义通用的函数，可以接受不同类型的参数
+2. 类模板: 用于定义通用的类，可以接受不同类型的成员变量
+
+```cpp
+#include <iostream>
+using namespace std;
+
+// 函数模板
+template <typename T>
+T add(T a, T b) {
+  return a + b;
+}
+
+// 类模板
+template <typename T>
+class Box {
+public:
+  Box(T value) : value_(value) {}
+  T getValue() { return value_; }
+private:
+  T value_;
+};
+
+int main() {
+  // 使用函数模板
+  cout << "Add int: " << add(5, 10) << endl; // 输出15
+  cout << "Add double: " << add(3.5, 2.5) << endl; // 输出6.0
+
+  // 使用类模板
+  Box<int> intBox(10);
+  cout << "Box int value: " << intBox.getValue() << endl; // 输出10
+
+  Box<string> strBox("Hello");
+  cout << "Box string value: " << strBox.getValue() << endl; // 输出Hello
+
+  return 0;
+}
+```
+
+## cpp的智能指针是什么
+
+智能指针是C++标准库提供的一种用于自动管理动态分配内存的类模板，通过智能指针可以避免内存泄漏和悬空指针等问题，实现资源的自动释放和管理
+
+主要的智能指针类型有:
+
+1. `std::unique_ptr`: 独占所有权的智能指针，同一时间只能有一个`unique_ptr`指向某个对象，适用于单一所有权场景
+2. `std::shared_ptr`: 共享所有权的智能指针，多个`shared_ptr`可以指向同一个对象，通过引用计数管理对象的生命周期，当最后一个`shared_ptr`被销毁时，自动释放对象
+3. `std::weak_ptr`: 弱引用智能指针，不拥有对象的所有权，不能直接访问对象，用于解决`shared_ptr`的循环引用问题，可以通过`lock()`方法获取对应的`shared_ptr`
+
+```cpp
+#include <iostream>
+#include <memory>
+using namespace std;
+
+int main() {
+  // 使用unique_ptr
+  unique_ptr<int> uptr(new int(10));
+  cout << "Unique Pointer Value: " << *uptr << endl;
+
+  // 使用shared_ptr
+  shared_ptr<int> sptr1(new int(20));
+  shared_ptr<int> sptr2 = sptr1; // 共享所有权
+  cout << "Shared Pointer Value: " << *sptr1 << ", " << *sptr2 << endl;
+  cout << "Shared Pointer Count: " << sptr1.use_count() << endl; // 输出2
+
+  // 使用weak_ptr
+  weak_ptr<int> wptr = sptr1; // 弱引用
+  if (auto spt = wptr.lock()) { // 获取shared_ptr
+    cout << "Weak Pointer Value: " << *spt << endl;
+  } else {
+    cout << "Weak Pointer is expired" << endl;
+  }
+
+  return 0;
+}
+```
+
+## 虚拟内存是什么
+
+## 内存分区有哪些
