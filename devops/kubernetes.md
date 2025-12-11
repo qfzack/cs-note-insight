@@ -360,9 +360,9 @@ PSA通过在命名空间打标签来启用不同的安全策略级别：
 - baseline：中等限制，禁止明显危险行为
 - restricted：最严格，遵循最小权限原则
 
-可以为命名空间设置的三中操作模式：
+可以为命名空间设置的三种操作模式：
 
-- `pod-security.kubernetes.io/enforce`：拒绝不合规 Pod
+- `pod-security.kubernetes.io/enforce`：拒绝不合规Pod
 - `pod-security.kubernetes.io/warn`：仅警告（不拦截）
 - `pod-security.kubernetes.io/audit`：记录审计日志（不拦截）
 

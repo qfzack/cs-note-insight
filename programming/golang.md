@@ -1,179 +1,5 @@
-- golang编码规范 https://github.com/xxjwxc/uber_go_guide_cn?tab=readme-ov-file
-- golang设计模式 https://github.com/senghoo/golang-design-pattern
-
----
-
-## golang内存分配与垃圾回收
-
-### 栈分配与堆分配
-
-**栈分配**负责处理生命周期短、作用域明确的变量
-**堆分配**负责处理需要跨函数访问、生命周期较长的对象，go的GC主要关注堆上的对象，但是需要扫描栈来找到根引用
-
-栈内存的分配和释放遵循后进先出的原则，分配速度很快，只需要一个栈指针即可，释放时也是批量释放，当函数返回时，整个栈帧都被回收
-栈分配是堆分配的高效替代方案，当编译器判断某个变量可以安全地分配在栈上时，就不会使用堆分配机制
-
-栈分配的条件：
-
-- 变量的生命周期不超过函数的作用域
-- 变量不会在函数外部被引用
-- 变量大小在编译时可以确定且不会过大
-- 没有通过指针、interface{}、slice、map、channel等方式逃逸
-
-逃逸到堆上的场景：
-
-- 方法返回局部变量的指针
-- 变量被赋值给interface{}
-- 变量被发送到channel
-- 变量被存储到slice、map等动态数据结构中
-- 变量太大（通常超过64KB）
-- 在闭包中被捕获且闭包逃逸
-
-> **闭包**：一个函数值（函数变量），捕获了其定义时所在的作用域的变量，即使这些变量已经超出了原始作用域，也依然可以访问，即闭包=函数+环境变量（我理解函数参数/返回值+直接使用外部变量）
-> 比如下面这个方法outer()已经完成了，但是x依然能被闭包访问
-
-```
-func outer() func() {
-    x := 10
-    return func() {
-        fmt.Println(x)  // 这个函数就是闭包
-    }
-}
-```
-
-### 分配器架构
-
-go的内存分配器借鉴了Google的TCMalloc，采用多级缓存的思想来减少锁竞争和提高分配效率
-
-- **page**
-  - 最小的物理分配单位，通常是8KB
-  - 是mspan管理的基本单位
-  - mheap按页分配内存
-- **mspan**
-  - 一段连续的page组成的内存块
-  - 用于管理某一size class对象（特定大小）的分配
-  - 将page划分为多个小块（object），每个span对应一个size class（大小等级67个）
-  - span的状态有：in-use/free/garbage collected等
-- **mcache**
-  - 每个Processor独有，为了减少锁竞争
-  - 缓存常用size class的mspan
-  - 内存分配优先从mcache获取span进行分配，不足时从mcentral获取
-- **mcentral**
-  - 每种size class拥有一个mcentral
-  - 管理多个span，维护free和in-use的span列表
-  - 为mcache提供span
-  - 从mheap申请新的span来扩容
-- **mheap**
-  - 管理所有的物理页内存
-  - 负责向操作系统申请内存
-  - 为mcentral提供span，包含大对象分配逻辑
-
-Go使用一个三层的内存分配器架构：
-
-- mcache：每个Processor有一个本地缓存，用于小对象的快速分配
-- mcentral：全局的中央缓存，管理特定大小类的内存块
-- mheap：全局堆管理器，负责大对象分配和向OS申请内存
-
-堆内存是若干页（8KB）组成，mspan是一组连续的页并划分为等大小的对象槽，用于存放某个特定大小（size class）的对象，每个mspan管理一种size class，并负责对象分配、空闲管理和GC跟踪
-
-size class是一组预设的对象大小值（从8B到32KB有67个大小），用来提升内存分配的效率，更大的对象需要从mheap通过page级别分配
-
-### 堆内存的划分
-
-堆内存的划分可以看作是page+mspan+size class的分层结构
-
-- page是堆最小的物理分配单元，每个page大小为8KB，go runtime使用page bitmap（页位图）来管理堆的哪些page是空闲的
-- span/mspan是一组连续的page，每个mspan专门用于存放同一种size class的对象，span的分配来自mcentral/mheap，使用完会回收到mcentral/mheap
-- size class是将堆上的小对象按照大小划分为8B～32KB不等的类（67个），每个size对应一个mcentral[sizeclass]，每个mcentral中存放一组mspan（被拆成N个对象槽）
-- 此外还有Tiny Allocator和Large Object分别处理微小对象（<=16B）和大对象（>32KB）的内存分配，大对象直接通过mheap分配连续的多个page
-
-### 内存管理单元
-
-- mspan：基本的内存管理单元，包含若干页，同一个mspan中的对象大小相同，mspan维护了空闲对象的位图，支持快速的分配和释放
-- 页管理：go使用8KB的页作为内存管理的基本单位，通过位图来跟踪页的使用状态
-
-### 堆内存分配策略
-
-堆内存分配对于不同大小的对象有不同的分配策略：
-- 微小对象（<16B）：使用**tiny allocator**，多个微小对象可以共享一个16字节的内存块，减少内存碎片
-  - Processor的mcache中会维护一个16B的内存缓冲区，专门用于分配小于16B且不包含指针的对象
-  - 而指针类型、interface{}、包含指针的结构体、需要特殊对齐的对象，如果小于16B也会通过size class分配
-- 小对象（16B-32KB）：使用**size class**机制，
-  - 预定义了67个不同大小（size class）的类别，每个类别对应固定大小的内存块已经存在于mcache中，分配时选择最接近且大于请求大小的size class
-  - 然后根据size class从mcache找到对应的mspan，如果没有mspan则向mcentral哪一个新的mspan
-  - 如果mcentral也没有，则向mheap请求分配一批page来构造mspan
-- 大对象（>32KB）：直接从**mheap分配**，使用页为单位（8KB）进行管理
-
-例如执行`x := make([]byte, 100)`
-
-1. 计算对象的size class：100字节属于某个size class（比如128B）
-2. 当前Processor的mcache找到对应size class的span
-3. 如果mcache有空闲的span，则分配并返回
-4. 如果没有，从mcentral拉一个新的span填充到mcache
-5. mcentral如果也没有，向mheap请求分配新的span
-6. mheap如果不够，则向操作系统申请内存
-
-### 垃圾回收机制
-
-go的垃圾回收（GC）是一个并发、三色标记清除+混合写屏障的高性能垃圾回收器，在程序运行时异步地找出不再被引用的堆对象并释放内存，目的是在低停顿时间和高吞吐量之间取得平衡
-
-GC的触发条件：
-
-- 内存分配达到一定的阈值（GOGC环境变量控制，默认100%，表示堆增长到上次GC后的100%触发）
-- 手动调用runtime.GC()
-
-> https://cloud.tencent.com/developer/article/1900650
-
-GC的过程包括四个阶段：
-
-- STW（stop the world）：GC初始化
-  - 准备工作：分配专门的标记goroutine，初始化标记队列和工作缓存队列，设置GC相关的全局状态
-  - 第一次STW：停止所有用户goroutine，启用写屏障，扫描全局变量和goroutine栈，找到GC root，将根对象标记为灰色（已标记但未扫描）并放进工作队列
-- 并发标记（Concurrent Marking）
-  - GC与用户代码并发运行，GC goroutine遍历灰色对象的指针字段，将其引用的对象也标记为**灰色（未扫描）**或**黑色（已扫描）**
-  - 使用三色标记算法标记所有遍历的对象，为了防止对象逃逸被误删，使用写屏障机制来追踪正在使用的对象
-  - 第二次STW：停止所有用户goroutine，检查是否有已标记的灰色对象（灰色对象引用的对象还没有被扫描，因此是待处理的）
-- 并发清除（Concurrent Sweep）
-  - 并发标记完成后，未被标记的白色对象就被认为是垃圾
-  - GC开始清理这些对象所属的mspan，将其回收到mcentral/mheap
-  - 清除阶段也与程序并发运行（非STW）
-- 重新分配：下一轮GC
-  - GC不会释放内存给操作系统，而是留在堆中供下次使用
-  - 后续新的对象可以重新使用这些回收的mspan
-
-### 三色标记算法
-
-GC把堆上的所有对象分为三类：
-
-1. 白色：尚未访问的对象，GC会清理它，除非在之后被标记为灰色/黑色
-2. 黑色：已经标记并扫描了其中的所有引用，不会被清除
-3. 灰色：已经标记但还没有扫描其引用的字段，等待进一步处理
-
-GC的目标是把所有从根可达的对象都标记为黑色，其余的白色就是可回收的垃圾
-
-标记过程：
-
-1. 初始状态：堆上所有对象都是白色的，GC启动会把根对象（如全局变量、当前方法的栈中的变量、寄存器中的引用）标记为灰色，并放入灰色对象队列
-2. 处理灰色对象：不断从灰色队列中取出对象，将其设为黑色，然后扫描该对象的所有字段，找到引用的对象：
-   - 如果引用对象是白色，则标记为灰色并加入灰色队列
-   - 如果引用对象是黑色/灰色，则跳过
-3. 循环直到灰色队列为空：这意味着所有从根出发可达的对象都被标记为黑色，剩下的白色对象是不可达的，需要被回收
-
-三色标记不变性：黑色对象不能引用白色对象，否则白色对象会被错误清除（实际情况就是可能出现对象被标记为黑色，然后后面又引用了一个新增的白色对象）
-为了保证不出现这种情况，就需要在并发阶段使用写屏障
-
-### 并发标记的写屏障
-
-并发标记阶段程序孩还在运行的时候，可能会有指针写入操作，这就需要写屏障来保证三色标记不变性：
-
-- 插入写屏障
-  - 当指针被修改时，将新指向的对象标记为灰色
-  - 保证新建立的引用关系不会违反三色不变性
-- 删除写屏障
-  - 当指针被修改时，将原来指向的对象标记为灰色
-  - 保证原有引用关系在断开前被正确处理
-
-可以理解为写屏障用于保证新引用的对象不会被误清理，通过将这些对象标记为灰色，使得它们及其引用关系能被GC扫描
+- golang编码规范 <https://github.com/xxjwxc/uber_go_guide_cn?tab=readme-ov-file>
+- golang设计模式 <https://github.com/senghoo/golang-design-pattern>
 
 ---
 
@@ -330,14 +156,14 @@ func safeDivide(a, b int) (result int) {
 import "reflect"
 
 type User struct {
-	Name string `json:"name" db:"user_name"`
+ Name string `json:"name" db:"user_name"`
 }
 
 func main() {
-	t := reflect.TypeOf(User{})
-	field, _ := t.FieldByName("Name")
-	fmt.Println(field.Tag.Get("json")) // 输出: name
-	fmt.Println(field.Tag.Get("db"))   // 输出: user_name
+ t := reflect.TypeOf(User{})
+ field, _ := t.FieldByName("Name")
+ fmt.Println(field.Tag.Get("json")) // 输出: name
+ fmt.Println(field.Tag.Get("db"))   // 输出: user_name
 }
 ```
 
@@ -404,7 +230,7 @@ func main() {
 
 ### Go的依赖管理
 
-> https://www.cnblogs.com/niuben/p/16182001.html
+> <https://www.cnblogs.com/niuben/p/16182001.html>
 
 ### golang如何单步调试
 
@@ -456,7 +282,7 @@ func main() {
 
 ### golang的多返回值怎么实现的
 
-> https://tiancaiamao.gitbooks.io/go-internals/content/zh/03.2.html
+> <https://tiancaiamao.gitbooks.io/go-internals/content/zh/03.2.html>
 
 - java中的方法只能有一个返回值，而go的方法可以有多个返回值
 - go编译器在函数调用和栈布局上做了特别支持：
@@ -480,6 +306,173 @@ func main() {
 addr := uintptr(unsafe.Pointer(&s)) + offset  //获取unsafe.Pointer转换为uintptr做地址偏移
 p := (*someType)(unsafe.Pointer(addr))  //偏移结果转换为unsafe.Pointer，再转为具体指针类型
 ```
+
+## golang内存分配
+
+### 栈分配与堆分配
+
+**栈分配**负责处理生命周期短、作用域明确的变量，栈的分配速度非常快，随着函数返回自动释放，因此不需要GC
+**堆分配**负责处理需要跨函数访问、生命周期较长的对象，go的GC主要关注堆上的对象，但是需要扫描栈来找到根引用
+
+当编译器判断某个变量可以安全地分配在栈上时，就不会使用堆分配机制，即编译器的逃逸分析机制：
+
+- 没有逃逸，分配到栈的情况
+  - 变量的生命周期不超过函数的作用域
+  - 变量不会在函数外部被引用
+  - 变量大小在编译时可以确定且不会过大
+  - 没有通过指针、interface{}、slice、map、channel等方式逃逸
+
+- 逃逸到堆上的情况
+  - 方法返回局部变量的指针
+  - 变量被赋值给interface{}
+  - 变量被发送到channel
+  - 变量被存储到slice、map等动态数据结构中
+  - 变量太大（通常超过64KB）
+  - 在闭包中被捕获且闭包逃逸
+
+> **闭包**（closure）是函数+外层函数作用域中被这个函数引用的变量，闭包可以让函数在外层函数返回之后，依然可以访问和修改外部作用域的变量
+> 比如下面这个方法outer()已经完成了，但是x依然能被闭包访问
+
+```go
+func outer() func() {
+    x := 10
+    return func() {
+        fmt.Println(x)  // 这个函数就是闭包
+    }
+}
+```
+
+### 内存分配机制
+
+go的堆内存机制借鉴了Google的TCMalloc分配器，采用多级内存分配（MCache-MCentral-MHeap）来减少锁竞争和碎片化
+
+- **page**
+  - 最小的物理分配单位，通常是8KB
+  - 是mspan管理的基本单位
+  - mheap按页分配内存
+- **mspan**
+  - 一段连续的page组成的内存块，堆内存的基本管理单元
+  - 用于管理某一size class对象（特定大小）的分配
+  - 将page划分为多个小块（object），每个span对应一个size class（大小等级67个）
+  - span的状态有：in-use/free/garbage collected等
+- **mcache**
+  - 每个Processor独有，为了减少锁竞争
+  - mcache为每个size class维护2个span：scan span和noscan span，即含指针和不含指针的span，来加快GC扫描
+  - 内存分配优先从mcache获取span进行分配，不足时从mcentral获取
+- **mcentral**
+  - 每种size class拥有一个mcentral
+  - 管理多个span，维护free和in-use的span列表
+  - 为mcache提供span
+  - 从mheap申请新的span来扩容
+- **mheap**
+  - 管理所有的物理页内存
+  - 负责向操作系统申请内存
+  - 为mcentral提供span，包含大对象分配逻辑
+
+使用多级内存分配的优势：
+
+1. 减少锁竞争：每个Processor有自己的mcache，减少了对全局mcentral和mheap的锁竞争
+2. 减少内存碎片：通过67种size class的划分，避免了小对象的内存碎片问题
+3. 提高分配效率：小对象可以直接从mcache获取，避免了频繁的全局锁操作
+4. 支持大对象分配：mheap可以直接从操作系统申请大块内存，适合大对象的分配需求
+
+### go的三层内存分配器
+
+- **mcache**：每个Processor有自己的mcache，实现小对象（小于32KB）的无锁快速分配
+- **mcentral**：集中管理每个size class的span池，提供给mcache使用
+- **mheap**：全局堆管理器，负责大对象（大于32KB）的分配和向OS申请内存
+
+堆内存是若干page（8KB）组成，**mspan**是一组连续的page并划分为大小相等的slot（对象槽），用于存放特定size class的对象，大小由size class决定，每个mspan管理一种size class，并负责对象分配、空闲管理和GC跟踪
+
+**size class**是一组预设的对象大小值（从8B到32KB有67个大小，也可以加上size class 0表示大对象），用来提升内存分配的效率，更大的对象需要从mheap通过page级别分配
+
+堆内存分配的流程：
+
+1. 分配请求到达时，判断对象的大小：
+   - 如果是小于16B的微小对象，使用tiny allocator
+   - 如果是大于32KB的大对象，直接从mheap分配，以page为单位进行管理
+2. 对于16B到32KB的对象，选择最接近且大于请求大小的size class，检查mcache中对应size class是否有空闲span，有则分配
+3. 如果mcache没有该size class的空闲span，向mcentral请求一个新的span
+4. mcentral检查对应size class的span池，如果有空闲span，则分配给mcache
+5. 如果没有，则向mheap请求分配新的span，mheap从操作系统申请内存，创建新的span并返回给mcentral
+6. mcentral将新的span分配给mcache，mcache再进行对象分配
+
+例如执行`x := make([]byte, 100)`
+
+1. 计算对象的size class：100字节属于某个size class（比如128B）
+2. 当前Processor的mcache找到对应size class的span
+3. 如果mcache有空闲的span，则分配并返回
+4. 如果没有，从mcentral拉一个新的span填充到mcache
+5. mcentral如果也没有，向mheap请求分配新的span
+6. mheap如果不够，则向操作系统申请内存
+
+### tiny allocator
+
+tiny allocator是在三层分配器之上的一个特殊优化，专门用于分配微小对象（小于16B且不包含指针的对象），通过将多个微小对象打包在一个16字节的内存块中进行分配，减少内存碎片和分配开销
+
+如bool、int8、uint8、byte的大小都是1B，rune、int16、uint16是2B，int32、uint32、float32是4B，int64、uint64、float64是8B，这些类型的变量如果频繁分配会导致大量的内存碎片和分配开销
+
+tiny allocator通过以下方式优化：
+
+- 每个Processor的mcache维护一个16B的内存缓冲区，专门用于分配微小对象
+- 当分配微小对象时，先检查mcache的tiny allocator缓冲区是否有足够空间
+- 如果有，则直接从缓冲区分配，避免访问mcentral/mheap
+- 如果没有，则从mcentral获取一个新的16B内存块，填充到mcache的tiny allocator缓冲区
+
+## golang垃圾回收
+
+### GC流程
+
+go的垃圾回收（GC）使用的是并发标记清除的方式，结合了三色标记算法和写屏障机制，用于在程序运行时异步地找出不再被引用的堆对象并释放内存，目的是在低停顿时间和高吞吐量之间取得平衡
+
+GC的触发条件：
+
+- 内存分配达到一定的阈值（GOGC环境变量控制，默认100%，表示堆内存使用增长了上次GC后的100%触发）
+- 手动调用runtime.GC()
+
+> <https://cloud.tencent.com/developer/article/1900650>
+
+GC的过程包括四个阶段：
+
+1. 初始标记STW（Stop The World）
+   - 暂停所有用户goroutine，启用写屏障，扫描GC Root对象如全局变量和goroutine栈和寄存器中的引用对象
+   - 将GC Root对象标记为灰色（已标记但未扫描）并放进工作队列
+
+2. 并发标记（Concurrent Marking）
+   - 用户goroutine和GC标记并发运行，使用三色标记算法标记所有可达的对象
+   - 为了防止对象逃逸被误删，通过写屏障来追踪标记过程中的指针变化
+
+3. 标记终止（Mark Termination）
+   - 短暂STW，再次扫描GC Root和goroutine栈，扫描新增的GC Root和指针变化的对象，确保所有可达对象都被标记，关闭写屏障
+   - 并发标记完成后，堆上未被标记的白色对象就被认为是垃圾
+
+4. 清理/回收（Sweep）
+   - 遍历堆上的所有mspan，回收未被标记的白色对象，将其内存释放回mspan的空闲列表
+
+### 三色标记算法
+
+GC把堆上的所有对象分为三类：
+
+1. 白色：尚未被访问的对象，GC会清理它，除非在之后被标记为灰色/黑色
+2. 黑色：已经标记并扫描了其中的所有引用，不会被清除
+3. 灰色：已经标记但还没有扫描其引用的对象，需要递归扫描
+
+GC的目标是把所有从根可达的对象都标记为黑色，其余的白色就是可回收的垃圾
+
+三色标记过程：
+
+1. 初始状态：堆上所有对象都是白色的，GC启动会把根对象（如全局变量、当前goroutine方法栈中的变量、寄存器中的引用）标记为灰色，并放入灰色对象队列
+2. 处理灰色对象：不断从灰色队列中取出对象，扫描该对象的所有字段，找到引用的对象：
+   - 如果引用对象是白色，则标记为灰色并加入灰色队列，原对象标记为黑色
+   - 如果引用对象是黑色/灰色，则跳过，原对象标记为黑色
+3. 循环直到灰色队列为空，即所有从根出发可达的对象都被标记为黑色，剩下的白色对象是不可达的，需要被回收
+
+**三色标记不变性**：黑色对象不能引用白色对象，否则白色对象会被错误清除，实际情况就是可能出现对象被标记为黑色，并发标记的时候引用了一个新增的白色对象
+
+为了保证不出现这种情况，需要在并发阶段使用**写屏障**来保证三色不变性：
+
+- 并发标记阶段，如果goroutine写一个黑色对象的指针指向白色对象，则需要把白色对象标记为灰色，加入灰色队列
+- 保证了黑色对象不会直接引用白色对象，从而维护三色不变性，避免可达对象被误回收
 
 ## golang基本类型
 
@@ -535,7 +528,7 @@ type slice struct {
   - 大的slice上提供稳定的增长率
   - 最终保证更好的内存使用率
 
-> https://juejin.cn/post/7136774425415794719
+> <https://juejin.cn/post/7136774425415794719>
 
 #### 使用数组和slice作为参数的区别，slice作为参数传递有什么问题
 
@@ -924,7 +917,7 @@ func main() {
 
 #### channel的底层原理
 
-> https://juejin.cn/post/6844903821349502990
+> <https://juejin.cn/post/6844903821349502990>
 
 - 代码中创建的`ch := make(chan int)`中，`ch`是一个引用类型，其底层的结构体是`runtime.hchan`（heap channel，分配在堆上），主要包括：
   - `qcount`：当前缓冲区元素的数量
@@ -1106,7 +1099,7 @@ goroutine的创建和销毁开销很小，适合高并发场景
 - Context是一个interface，包含以下方法：
   - `Deadline() (deadline time.Time, ok bool)`返回截至时间
   - `Done() <-chan struct{}`返回一个channel，关闭代表取消信号
-  - `Err() error `取消原因
+  - `Err() error`取消原因
   - `Value(key interface{}) interface{}`传递的键值对数据
 
 - 使用场景
@@ -1209,12 +1202,12 @@ func main() {
 
 ## 协程池
 
-https://golangstar.cn/go_series/go_advanced/goroutine_pool.html
+<https://golangstar.cn/go_series/go_advanced/goroutine_pool.html>
 
 ## 反射
 
-https://golangstar.cn/go_series/go_advanced/reflect.html
+<https://golangstar.cn/go_series/go_advanced/reflect.html>
 
 ## 范型
 
-https://golangstar.cn/go_series/go_advanced/generics.html
+<https://golangstar.cn/go_series/go_advanced/generics.html>
