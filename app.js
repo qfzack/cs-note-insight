@@ -1,66 +1,54 @@
-// 文件结构配置
+// 文件结构配置 - 只需配置路径
 const fileStructure = {
     backend: [
-        { name: '分布式系统', path: 'backend/distributed-system.md' },
-        { name: '消息队列', path: 'backend/message-queue.md' },
-        { name: '微服务', path: 'backend/micro-service.md' },
-        { name: 'Redis', path: 'backend/redis.md' },
-        { name: 'SQL', path: 'backend/SQL.md' },
-        { name: '系统设计', path: 'backend/system-desgin.md' },
-        { name: 'Web框架', path: 'backend/web-framework.md' }
+        'backend/distributed-system.md',
+        'backend/message-queue.md',
+        'backend/micro-service.md',
+        'backend/redis.md',
+        'backend/SQL.md',
+        'backend/system-desgin.md',
+        'backend/web-framework.md'
     ],
     devops: [
-        { name: 'DevOps实践', path: 'devops/devops.md' },
-        { name: 'Docker', path: 'devops/docker.md' },
-        { name: 'Kubernetes & CRD', path: 'devops/k8s&CRD.md' },
-        { name: 'Kubernetes', path: 'devops/kubernetes.md' }
+        'devops/devops.md',
+        'devops/docker.md',
+        'devops/k8s&CRD.md',
+        'devops/kubernetes.md'
     ],
     foundations: [
-        { name: '网络', path: 'foundations/network.md' },
-        { name: '操作系统', path: 'foundations/OS.md' }
+        'foundations/network.md',
+        'foundations/OS.md'
     ],
     insights: [
-        { name: 'GMP', path: 'insights/GMP.md' },
-        { name: '内存分配与垃圾回收', path: 'insights/内存分配与垃圾回收.md' }
+        'insights/GMP.md',
+        'insights/内存分配与垃圾回收.md'
     ],
     interviews: [
-        { name: 'Shein', path: 'interviews/Shein.md' },
-        { name: '咪咕', path: 'interviews/咪咕.md' },
-        { name: '字节跳动', path: 'interviews/字节跳动.md' },
-        { name: '平头哥', path: 'interviews/平头哥.md' },
-        { name: '摩尔线程', path: 'interviews/摩尔线程.md' },
-        { name: '文远知行', path: 'interviews/文远知行.md' },
-        { name: '百度', path: 'interviews/百度.md' },
-        { name: '识货', path: 'interviews/识货.md' },
-        { name: '鹰角', path: 'interviews/鹰角.md' }
+        'interviews/Shein.md',
+        'interviews/咪咕.md',
+        'interviews/字节跳动.md',
+        'interviews/平头哥.md',
+        'interviews/摩尔线程.md',
+        'interviews/文远知行.md',
+        'interviews/百度.md',
+        'interviews/识货.md',
+        'interviews/鹰角.md'
     ],
     programming: [
-        { name: 'C++', path: 'programming/cpp.md' },
-        { name: 'Golang', path: 'programming/golang.md' },
-        { name: 'Python', path: 'programming/python.md' }
+        'programming/cpp.md',
+        'programming/golang.md',
+        'programming/python.md'
     ],
     docs: [
-        { name: 'Mermaid', path: 'docs/mermaid.md' },
-        { name: '问题', path: 'docs/questions.md' },
-        { name: '资源', path: 'docs/resource.md' },
-        { name: '自我介绍', path: 'docs/self-introduction.md' }
+        'docs/mermaid.md',
+        'docs/questions.md',
+        'docs/resource.md',
+        'docs/self-introduction.md'
     ]
 };
 
-// 分类标题映射
-const categoryTitles = {
-    all: '全部知识点',
-    backend: '后端 (Backend)',
-    devops: '运维 (DevOps)',
-    foundations: '基础 (Foundations)',
-    insights: '深入理解 (Insights)',
-    interviews: '面试经验 (Interviews)',
-    programming: '编程语言 (Programming)',
-    docs: '文档 (Docs)'
-};
-
 // 全局状态
-let currentCategory = 'all';
+let currentCategory = 'all';  // 改为小写
 let currentFiles = [];
 let searchQuery = '';
 const contentCache = {};
@@ -94,7 +82,10 @@ if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
             }
             return hljs.highlightAuto(code).value;
         },
-        langPrefix: 'hljs language-'
+        langPrefix: 'hljs language-',
+        breaks: false,
+        gfm: true,
+        pedantic: false
     });
 }
 
@@ -105,19 +96,41 @@ document.addEventListener('DOMContentLoaded', () => {
         topBar.style.display = 'none';
     }
 
+    // 动态生成导航菜单
+    generateNavMenu();
+    
     loadFiles();
     setupEventListeners();
 });
 
+// 动态生成导航菜单
+function generateNavMenu() {
+    const navList = document.getElementById('navList');
+    navList.innerHTML = '';
+    
+    // 添加"全部"选项
+    const allItem = document.createElement('li');
+    allItem.innerHTML = `<a href="#" data-category="all" class="nav-link active">all</a>`;
+    navList.appendChild(allItem);
+    
+    // 根据 fileStructure 动态生成分类
+    Object.keys(fileStructure).forEach(category => {
+        const li = document.createElement('li');
+        li.innerHTML = `<a href="#" data-category="${category}" class="nav-link">${category}</a>`;
+        navList.appendChild(li);
+    });
+}
+
 // 设置事件监听器
 function setupEventListeners() {
-    // 导航链接点击
-    navLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
+    // 导航链接点击（使用事件委托）
+    const navList = document.getElementById('navList');
+    navList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('nav-link')) {
             e.preventDefault();
-            const category = link.getAttribute('data-category');
+            const category = e.target.getAttribute('data-category');
             setActiveCategory(category);
-        });
+        }
     });
 
     // 搜索输入
@@ -154,6 +167,7 @@ function setActiveCategory(category) {
     currentCategory = category;
     
     // 更新导航状态
+    const navLinks = document.querySelectorAll('.nav-link');
     navLinks.forEach(link => {
         link.classList.remove('active');
         if (link.getAttribute('data-category') === category) {
@@ -161,8 +175,8 @@ function setActiveCategory(category) {
         }
     });
 
-    // 更新标题
-    categoryTitle.textContent = categoryTitles[category] || '全部知识点';
+    // 使用格式化函数更新标题
+    categoryTitle.textContent = formatCategoryName(category);
 
     // 切换分类时返回列表视图，避免停留在旧文档
     showFileList();
@@ -177,6 +191,15 @@ function setActiveCategory(category) {
     }
 }
 
+// 从路径生成文件对象
+function pathToFile(path) {
+    const fileName = path.split('/').pop().replace('.md', '');
+    return {
+        name: fileName,
+        path: path
+    };
+}
+
 // 加载文件列表
 async function loadFiles() {
     fileListContainer.innerHTML = '<div class="loading">加载中...</div>';
@@ -184,15 +207,23 @@ async function loadFiles() {
     let files = [];
     
     if (currentCategory === 'all') {
-        // 加载所有文件
-        Object.values(fileStructure).forEach(categoryFiles => {
-            files = files.concat(categoryFiles);
+        // 加载所有分类的文件
+        Object.keys(fileStructure).forEach(category => {
+            const paths = fileStructure[category];
+            files = files.concat(paths.map(pathToFile));
         });
-    } else {
-        files = fileStructure[currentCategory] || [];
+    } else if (fileStructure[currentCategory]) {
+        // 加载特定分类的文件
+        const paths = fileStructure[currentCategory];
+        files = paths.map(pathToFile);
     }
     
     currentFiles = files;
+    
+    // 预加载所有文件内容以支持全文搜索
+    await preloadFileContents(files);
+    
+    // 显示文件列表
     await filterAndDisplayFiles();
 }
 
@@ -252,21 +283,35 @@ async function filterAndDisplayFiles() {
     fileListContainer.appendChild(fileGrid);
 }
 
+// 分类图标和颜色配置
+const categoryConfig = {
+    backend: { icon: '🔧', color: '#3b82f6', label: 'Backend' },
+    devops: { icon: '⚙️', color: '#8b5cf6', label: 'DevOps' },
+    foundations: { icon: '📚', color: '#f59e0b', label: 'Foundations' },
+    insights: { icon: '💡', color: '#10b981', label: 'Insights' },
+    interviews: { icon: '💼', color: '#ef4444', label: 'Interviews' },
+    programming: { icon: '💻', color: '#06b6d4', label: 'Programming' },
+    docs: { icon: '📝', color: '#6366f1', label: 'Docs' },
+    all: { icon: '📂', color: '#6b7280', label: 'All' }
+};
+
 // 创建文件卡片
 function createFileCard(file) {
     const card = document.createElement('div');
     card.className = 'file-card';
     
     const category = getCategoryFromPath(file.path);
-    const categoryLabel = categoryTitles[category] || category;
+    const config = categoryConfig[category] || categoryConfig.all;
     
     card.innerHTML = `
         <div class="file-card-title">
-            📄 ${file.name}
+            ${config.icon} ${file.name}
         </div>
         <div class="file-card-path">${file.path}</div>
         <div>
-            <span class="file-card-category">${categoryLabel}</span>
+            <span class="file-card-category" style="background-color: ${config.color}20; color: ${config.color}; border-color: ${config.color}40">
+                ${config.label}
+            </span>
         </div>
     `;
     
@@ -292,10 +337,9 @@ function getCategoryFromPath(path) {
 // 加载文件内容
 async function loadFileContent(file) {
     viewerContent.innerHTML = '<div class="loading">加载中...</div>';
-    viewerTitle.textContent = file.name;
+    viewerTitle.textContent = file.path;  // 显示完整路径
     
     try {
-        // 加一个时间戳避免浏览器缓存旧的 markdown 内容
         const cacheBuster = `?t=${Date.now()}`;
         const response = await fetch(`${file.path}${cacheBuster}`, { cache: 'no-store' });
         if (!response.ok) {
@@ -307,18 +351,17 @@ async function loadFileContent(file) {
         
         viewerContent.innerHTML = html;
         
-        // 显示查看器，隐藏列表
+        // 手动触发代码高亮（以防万一）
+        viewerContent.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+        });
+        
         fileListContainer.style.display = 'none';
         contentViewer.style.display = 'flex';
-        
-        // 滚动到顶部
         viewerContent.scrollTop = 0;
         
-        // 处理图片路径
         processImages(file.path);
-
-    // 构建目录
-    buildTOC();
+        buildTOC();
         
     } catch (error) {
         console.error('Error loading file:', error);
@@ -326,9 +369,6 @@ async function loadFileContent(file) {
             <div class="empty-state">
                 <div class="empty-state-icon">❌</div>
                 <div class="empty-state-text">加载失败: ${error.message}</div>
-                <p style="margin-top: 16px; color: var(--text-secondary);">
-                    请确保文件路径正确，并且通过 HTTP 服务器访问此页面。
-                </p>
             </div>
         `;
     }
@@ -442,5 +482,21 @@ function observeHeadings(headings) {
 function showFileList() {
     contentViewer.style.display = 'none';
     fileListContainer.style.display = 'block';
+}
+
+// 删除或注释掉 categoryTitles 常量
+// const categoryTitles = { ... };
+
+// 添加格式化函数
+function formatCategoryName(category) {
+    if (category === 'all') return '全部知识点';
+    // 首字母大写
+    return category.charAt(0).toUpperCase() + category.slice(1);
+}
+
+function formatFileName(path) {
+    // 从路径中提取文件名（不含扩展名）
+    const fileName = path.split('/').pop().replace('.md', '');
+    return fileName;
 }
 

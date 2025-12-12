@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CS 面试知识点速查</title>
     <link rel="stylesheet" href="styles.css?v=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+    <!-- 将 highlight.js 主题改为浅色 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 </head>
 <body>
     <div class="container">
@@ -27,15 +26,8 @@
             <nav class="nav-menu">
                 <div class="nav-section">
                     <h3 class="nav-title">分类导航</h3>
-                    <ul class="nav-list">
-                        <li><a href="#" data-category="all" class="nav-link active">全部</a></li>
-                        <li><a href="#" data-category="backend" class="nav-link">后端 (Backend)</a></li>
-                        <li><a href="#" data-category="devops" class="nav-link">运维 (DevOps)</a></li>
-                        <li><a href="#" data-category="foundations" class="nav-link">基础 (Foundations)</a></li>
-                        <li><a href="#" data-category="insights" class="nav-link">深入理解 (Insights)</a></li>
-                        <li><a href="#" data-category="interviews" class="nav-link">面试经验 (Interviews)</a></li>
-                        <li><a href="#" data-category="programming" class="nav-link">编程语言 (Programming)</a></li>
-                        <li><a href="#" data-category="docs" class="nav-link">文档 (Docs)</a></li>
+                    <ul class="nav-list" id="navList">
+                        <!-- 导航链接将由 JavaScript 动态生成 -->
                     </ul>
                 </div>
             </nav>
@@ -79,7 +71,9 @@
     </div>
     
     <!-- 加版本号避免浏览器缓存旧的 JS/CSS -->
-    <script src="app.js?v=2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
 
