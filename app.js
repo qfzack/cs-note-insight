@@ -19,28 +19,17 @@ const fileStructure = {
         'foundations/network.md',
         'foundations/OS.md'
     ],
-    insights: [
-        'insights/GMP.md',
-        'insights/内存分配与垃圾回收.md'
-    ],
-    interviews: [
-        'interviews/Shein.md',
-        'interviews/咪咕.md',
-        'interviews/字节跳动.md',
-        'interviews/平头哥.md',
-        'interviews/摩尔线程.md',
-        'interviews/文远知行.md',
-        'interviews/百度.md',
-        'interviews/识货.md',
-        'interviews/鹰角.md'
-    ],
     programming: [
         'programming/cpp.md',
         'programming/golang.md',
         'programming/python.md'
     ],
+    insights: [
+        'insights/GMP.md',
+        'insights/内存分配与垃圾回收.md'
+    ],
     docs: [
-        'docs/mermaid.md',
+        'docs/interviews.md',
         'docs/questions.md',
         'docs/resource.md',
         'docs/self-introduction.md'
@@ -289,9 +278,8 @@ const categoryConfig = {
     devops: { icon: '⚙️', color: '#8b5cf6', label: 'DevOps' },
     foundations: { icon: '📚', color: '#f59e0b', label: 'Foundations' },
     insights: { icon: '💡', color: '#10b981', label: 'Insights' },
-    interviews: { icon: '💼', color: '#ef4444', label: 'Interviews' },
-    programming: { icon: '💻', color: '#06b6d4', label: 'Programming' },
     docs: { icon: '📝', color: '#6366f1', label: 'Docs' },
+    programming: { icon: '💻', color: '#06b6d4', label: 'Programming' },
     all: { icon: '📂', color: '#6b7280', label: 'All' }
 };
 
@@ -328,9 +316,8 @@ function getCategoryFromPath(path) {
     if (path.startsWith('devops/')) return 'devops';
     if (path.startsWith('foundations/')) return 'foundations';
     if (path.startsWith('insights/')) return 'insights';
-    if (path.startsWith('interviews/')) return 'interviews';
-    if (path.startsWith('programming/')) return 'programming';
     if (path.startsWith('docs/')) return 'docs';
+    if (path.startsWith('programming/')) return 'programming';
     return 'other';
 }
 

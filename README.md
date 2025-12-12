@@ -1,33 +1,36 @@
-## 面试方向速查指南
+## CS方向速查指南
+
+本项目的文档可以通过GitHub Pages在线页面[cs-note-insight](https://qfzack.github.io/cs-note-insight/)查看
+
+![cs-note-insight](./resources/images/cs-note-insight.png)
 
 ### Backend（后端）
 
 - 语言与运行时（Go）
-  - 并发与内存模型：goroutine 调度、GMP、channel 语义、select 超时、context 取消链；happens-before、atomic 与锁（Mutex/RWMutex）取舍（参见：[Golang基础](./golang-note.md)）
-  - 内存与 GC：逃逸分析、栈/堆分配、三色标记/写屏障、STW 优化；内存泄漏定位（pprof）与对象复用（sync.Pool）
+  - 并发与内存模型：goroutine 调度、GMP、channel 语义、select 超时、context 取消链；happens-before、atomic 与锁（Mutex/RWMutex）取舍（参见：[Golang基础](./programming/golang.md)）
+  - 内存与 GC：逃逸分析、栈/堆分配、三色标记/写屏障、STW 优化；内存泄漏定位（pprof）与对象复用（sync.Pool）（参见：[内存分配与垃圾回收](./insights/内存分配与垃圾回收.md)）
   - 错误处理：error wrapping、哨兵错误 vs 自定义类型、可重试错误分类
-- 网络与协议
+- 网络与协议（参见：[网络基础](./foundations/network.md)）
   - TCP/UDP：握手挥手、TIME_WAIT/FIN_WAIT、Nagle/粘包/半包；连接池与 Keep-Alive
   - HTTP/1.1 vs HTTP/2/3：队头阻塞、连接复用、HPACK/QPACK、TLS 基础；gRPC（流式、拦截器、超时与重试）
 - Web 与微服务
-  - 路由/中间件、认证授权（JWT/OAuth2/OIDC）、CORS/CSRF；日志规范、结构化日志与追踪注入（参见：[框架和工具](./web-framework.md)）
+  - 路由/中间件、认证授权（JWT/OAuth2/OIDC）、CORS/CSRF；日志规范、结构化日志与追踪注入（参见：[框架和工具](./backend/web-framework.md)）
   - API 设计：资源建模、分页（游标优先）、幂等键、乐观锁（版本号/ETag）、错误码与可观测字段
-  - 服务治理：注册发现、配置中心、限流（令牌桶/漏桶）、熔断隔离（舱壁）、超时/重试/退避、雪崩防护（参见：[设计模式](./micro-service.md)）
-  - 分布式事务：2PC/TCC/Saga/Outbox 对比、适用场景与失败补偿（参见：[消息队列和流处理](./message-queue.md)）
+  - 服务治理：注册发现、配置中心、限流（令牌桶/漏桶）、熔断隔离（舱壁）、超时/重试/退避、雪崩防护（参见：[微服务设计](./backend/micro-service.md)）
+  - 分布式事务：2PC/TCC/Saga/Outbox 对比、适用场景与失败补偿（参见：[消息队列和流处理](./backend/message-queue.md)）
 - 数据与缓存
-  - SQL 与索引：B+Tree、覆盖/联合索引与最左匹配、回表、索引失效场景；执行计划与慢查询分析
+  - SQL 与索引：B+Tree、覆盖/联合索引与最左匹配、回表、索引失效场景；执行计划与慢查询分析（参见：[SQL](./backend/SQL.md)）
   - 事务与隔离级别：读已提交/可重复读/串行化、MVCC、幻读/脏读/不可重复读
-  - 连接池：池大小、超时、突刺流量与雪崩；分库分表与路由/倾斜/热点处理（参见：[数据库和存储](./database.md)）
-  - Redis：常用结构（String/Hash/Set/ZSet/Bitmap/HyperLogLog）、延迟队列、布隆过滤器、分布式锁正确性（过期/续约/单点/时钟漂移）
+  - Redis：常用结构（String/Hash/Set/ZSet/Bitmap/HyperLogLog）、延迟队列、布隆过滤器、分布式锁正确性（参见：[Redis](./backend/redis.md)）
   - 缓存策略：Cache Aside/Read-Through/Write-Through/Write-Back，双写一致、穿透/击穿/雪崩治理
-- 分布式与系统设计
+- 分布式与系统设计（参见：[系统设计](./backend/system-desgin.md)、[分布式系统](./backend/distributed-system.md)）
   - 一致性与可用性：CAP、线性一致/最终一致、Quorum
   - 全局 ID：雪花/数据库号段/Leaf/Redis 自增；时钟问题与单调性
-  - 消息语义：At-most/At-least/Exactly-once、去重与幂等键、事务消息/Outbox（参见：[消息队列和流处理](./message-queue.md)）
+  - 消息语义：At-most/At-least/Exactly-once、去重与幂等键、事务消息/Outbox
   - 任务调度：延时/重试/死信、幂等与去重窗口、顺序性保证
   - 设计题套路：流量估算、容量与 QPS、读写放大、热点与分层缓存
 - 可观测性与性能
-  - 三板斧：Metrics/Logs/Tracing；红/四黄金指标、P50/P95/P99；关联 ID 贯通（参见：[监控和可观测性](#监控和可观测性)）
+  - 三板斧：Metrics/Logs/Tracing；红/四黄金指标、P50/P95/P99；关联 ID 贯通
   - 性能定位：pprof/火焰图、锁竞争、GC 压力、系统调用；基准与压测（RPS/并发/思考时间）
   - 稳定性：限流/熔断/降级策略分层与回退
 - 测试与工程效率
@@ -36,9 +39,9 @@
 - 高频必答
   - 幂等实现的几种方式与适用场景
   - 设计高并发下订单/库存系统（热点/超卖/一致性）
-  - goroutine 泄漏排查与避免模式
+  - goroutine 泄漏排查与避免模式（参见：[GMP调度](./insights/GMP.md)）
   - HTTP 重试的幂等性、安全退避与超时搭配
-  - 无损滚动升级与灰度发布策略（参见：[Kubernetes](#kubernetes)、[容器化技术](#容器化技术)）
+  - 无损滚动升级与灰度发布策略（参见：[Kubernetes](./devops/kubernetes.md)、[Docker](./devops/docker.md)）
   - 分布式事务在电商订单的落地方案选型
   - RPS→容量→资源估算与瓶颈定位（CPU/IO/DB）
 
@@ -53,15 +56,15 @@
   - 召回→重排：Sparse+Dense 混合、BM25、Cross Encoder/Reranker；多路检索与合并
   - 索引与数据管道：清洗/去重/切分/增量；元数据与版本；冷/热数据分层
   - 上下文构造：Citation、片段去噪、反向检索、窗口/摘要混合记忆
-  - 评测：检索指标（Recall@k/MRR/nDCG）、问答准确率、事实性（LLM-as-Judge）、离线集/在线 A/B（参见：[数据库和存储](./database.md)）
+  - 评测：检索指标（Recall@k/MRR/nDCG）、问答准确率、事实性（LLM-as-Judge）、离线集/在线 A/B
 - 编排与多智能体
   - LangChain/LangGraph：有向图/状态机、工具路由、Plan-Execute-Reflect、可视化与回放
   - 会话状态：短期窗口/长期记忆（向量/摘要/实体），遗忘策略与越界保护
 - 生产级服务化
   - API 设计：流式 SSE、并发/排队、速率限制/配额、幂等键；成本控制（缓存/批处理/压缩/截断）
   - 可靠性：提示/模型版本管理、Prompt 迁移、Guardrails（输入/输出过滤、PII/敏感词/越狱防护）、审计
-  - 观测：提示模板与变体、成本/延迟/调用成功率、工具调用指标/故障码（参见：[监控和可观测性](#监控和可观测性)）
-  - 部署：CPU/GPU 调度、亲和/污点、模型热加载与权重共享、并发与显存规划（参见：[Kubernetes](#kubernetes)、[容器化技术](#容器化技术)）
+  - 观测：提示模板与变体、成本/延迟/调用成功率、工具调用指标/故障码
+  - 部署：CPU/GPU 调度、亲和/污点、模型热加载与权重共享、并发与显存规划（参见：[Kubernetes](./devops/kubernetes.md)、[Docker](./devops/docker.md)）
 - 高频必答
   - 设计企业级 RAG 的端到端方案与评测闭环
   - 如何降低幻觉并可验证（检索证据/结构化输出/校验器）
@@ -72,28 +75,28 @@
 
 ### DevOps
 
-- Linux/网络基石
+- Linux/网络基石（参见：[操作系统](./foundations/OS.md)、[网络基础](./foundations/network.md)）
   - Namespace/cgroup 基础、容器与宿主隔离；进程/线程/文件描述符；常见内核限制
   - 网络：TCP 状态、端口复用、DNS、HTTP/TLS、网络策略与排障（curl/tcpdump/ss）
-- CI/CD 与 GitOps（参见：[DevOps实践](#devops实践)）
+- CI/CD 与 GitOps（参见：[DevOps实践](./devops/devops.md)）
   - Pipeline 设计：缓存/并行/制品产物、依赖镜像、失败重试与断点续跑
   - 环境推广：Dev→Staging→Prod，蓝绿/金丝雀/灰度、快速回滚与自动验证
   - 质量门禁：测试覆盖、SAST/DAST、许可证与合规扫描
-- 容器与镜像（参见：[容器化技术](#容器化技术)）
+- 容器与镜像（参见：[Docker](./devops/docker.md)）
   - Dockerfile 多阶段、层优化、BuildKit、SBOM、镜像扫描与签名
   - 供应链安全：签名（cosign）、重现性构建、SLSA 等级
-- Kubernetes（参见：[Kubernetes](#kubernetes)）
+- Kubernetes（参见：[Kubernetes](./devops/kubernetes.md)、[K8s CRD](./devops/k8s-crd.md)）
   - 核心对象：Pod/Deployment/StatefulSet/Job/CronJob；滚更策略与探针（Liveness/Readiness/Startup）
   - 资源与调度：Requests/Limits、QoS、HPA/VPA、亲和/反亲和、污点/容忍
   - 网络与存储：Service（ClusterIP/NodePort/LB）、Ingress、CNI、PVC/PV、存储类；节点压力与 OOMKill
   - 配置与密钥：ConfigMap/Secret、密钥轮换、密文管理（Sealed Secrets/KMS）
   - Mesh 与流量治理：Istio/mTLS、熔断/超时/重试、流量镜像与金丝雀
-- 可观测性与稳定性（参见：[监控和可观测性](#监控和可观测性)）
+- 可观测性与稳定性
   - 指标/日志/链路统一栈（Prometheus/Grafana/Loki/Tempo）、SLO/SLI 与告警设计、降噪/去重
   - 混沌工程与演练、容量规划与压测
-- IaC 与平台工程（参见：[云原生方向](#云原生方向)）
+- IaC 与平台工程
   - Terraform 模块化/远端状态/漂移检测、环境差异管理；Policy as Code（OPA）
-- 安全与合规（参见：[安全和合规](#安全和合规)）
+- 安全与合规
   - 最小权限（RBAC）、镜像与依赖漏洞治理、密钥与证书管理、审计与合规
 - 高频必答
   - 设计零停机发布与快速回滚（蓝绿/金丝雀）
