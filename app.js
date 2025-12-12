@@ -12,7 +12,7 @@ const fileStructure = {
     devops: [
         'devops/devops.md',
         'devops/docker.md',
-        'devops/k8s&CRD.md',
+        'devops/k8s-crd.md',
         'devops/kubernetes.md'
     ],
     foundations: [
