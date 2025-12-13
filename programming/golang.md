@@ -307,173 +307,6 @@ addr := uintptr(unsafe.Pointer(&s)) + offset  //获取unsafe.Pointer转换为uin
 p := (*someType)(unsafe.Pointer(addr))  //偏移结果转换为unsafe.Pointer，再转为具体指针类型
 ```
 
-## golang内存分配
-
-### 栈分配与堆分配
-
-**栈分配**负责处理生命周期短、作用域明确的变量，栈的分配速度非常快，随着函数返回自动释放，因此不需要GC
-**堆分配**负责处理需要跨函数访问、生命周期较长的对象，go的GC主要关注堆上的对象，但是需要扫描栈来找到根引用
-
-当编译器判断某个变量可以安全地分配在栈上时，就不会使用堆分配机制，即编译器的逃逸分析机制：
-
-- 没有逃逸，分配到栈的情况
-  - 变量的生命周期不超过函数的作用域
-  - 变量不会在函数外部被引用
-  - 变量大小在编译时可以确定且不会过大
-  - 没有通过指针、interface{}、slice、map、channel等方式逃逸
-
-- 逃逸到堆上的情况
-  - 方法返回局部变量的指针
-  - 变量被赋值给interface{}
-  - 变量被发送到channel
-  - 变量被存储到slice、map等动态数据结构中
-  - 变量太大（通常超过64KB）
-  - 在闭包中被捕获且闭包逃逸
-
-> **闭包**（closure）是函数+外层函数作用域中被这个函数引用的变量，闭包可以让函数在外层函数返回之后，依然可以访问和修改外部作用域的变量
-> 比如下面这个方法outer()已经完成了，但是x依然能被闭包访问
-
-```go
-func outer() func() {
-    x := 10
-    return func() {
-        fmt.Println(x)  // 这个函数就是闭包
-    }
-}
-```
-
-### 内存分配机制
-
-go的堆内存机制借鉴了Google的TCMalloc分配器，采用多级内存分配（MCache-MCentral-MHeap）来减少锁竞争和碎片化
-
-- **page**
-  - 最小的物理分配单位，通常是8KB
-  - 是mspan管理的基本单位
-  - mheap按页分配内存
-- **mspan**
-  - 一段连续的page组成的内存块，堆内存的基本管理单元
-  - 用于管理某一size class对象（特定大小）的分配
-  - 将page划分为多个小块（object），每个span对应一个size class（大小等级67个）
-  - span的状态有：in-use/free/garbage collected等
-- **mcache**
-  - 每个Processor独有，为了减少锁竞争
-  - mcache为每个size class维护2个span：scan span和noscan span，即含指针和不含指针的span，来加快GC扫描
-  - 内存分配优先从mcache获取span进行分配，不足时从mcentral获取
-- **mcentral**
-  - 每种size class拥有一个mcentral
-  - 管理多个span，维护free和in-use的span列表
-  - 为mcache提供span
-  - 从mheap申请新的span来扩容
-- **mheap**
-  - 管理所有的物理页内存
-  - 负责向操作系统申请内存
-  - 为mcentral提供span，包含大对象分配逻辑
-
-使用多级内存分配的优势：
-
-1. 减少锁竞争：每个Processor有自己的mcache，减少了对全局mcentral和mheap的锁竞争
-2. 减少内存碎片：通过67种size class的划分，避免了小对象的内存碎片问题
-3. 提高分配效率：小对象可以直接从mcache获取，避免了频繁的全局锁操作
-4. 支持大对象分配：mheap可以直接从操作系统申请大块内存，适合大对象的分配需求
-
-### go的三层内存分配器
-
-- **mcache**：每个Processor有自己的mcache，实现小对象（小于32KB）的无锁快速分配
-- **mcentral**：集中管理每个size class的span池，提供给mcache使用
-- **mheap**：全局堆管理器，负责大对象（大于32KB）的分配和向OS申请内存
-
-堆内存是若干page（8KB）组成，**mspan**是一组连续的page并划分为大小相等的slot（对象槽），用于存放特定size class的对象，大小由size class决定，每个mspan管理一种size class，并负责对象分配、空闲管理和GC跟踪
-
-**size class**是一组预设的对象大小值（从8B到32KB有67个大小，也可以加上size class 0表示大对象），用来提升内存分配的效率，更大的对象需要从mheap通过page级别分配
-
-堆内存分配的流程：
-
-1. 分配请求到达时，判断对象的大小：
-   - 如果是小于16B的微小对象，使用tiny allocator
-   - 如果是大于32KB的大对象，直接从mheap分配，以page为单位进行管理
-2. 对于16B到32KB的对象，选择最接近且大于请求大小的size class，检查mcache中对应size class是否有空闲span，有则分配
-3. 如果mcache没有该size class的空闲span，向mcentral请求一个新的span
-4. mcentral检查对应size class的span池，如果有空闲span，则分配给mcache
-5. 如果没有，则向mheap请求分配新的span，mheap从操作系统申请内存，创建新的span并返回给mcentral
-6. mcentral将新的span分配给mcache，mcache再进行对象分配
-
-例如执行`x := make([]byte, 100)`
-
-1. 计算对象的size class：100字节属于某个size class（比如128B）
-2. 当前Processor的mcache找到对应size class的span
-3. 如果mcache有空闲的span，则分配并返回
-4. 如果没有，从mcentral拉一个新的span填充到mcache
-5. mcentral如果也没有，向mheap请求分配新的span
-6. mheap如果不够，则向操作系统申请内存
-
-### tiny allocator
-
-tiny allocator是在三层分配器之上的一个特殊优化，专门用于分配微小对象（小于16B且不包含指针的对象），通过将多个微小对象打包在一个16字节的内存块中进行分配，减少内存碎片和分配开销
-
-如bool、int8、uint8、byte的大小都是1B，rune、int16、uint16是2B，int32、uint32、float32是4B，int64、uint64、float64是8B，这些类型的变量如果频繁分配会导致大量的内存碎片和分配开销
-
-tiny allocator通过以下方式优化：
-
-- 每个Processor的mcache维护一个16B的内存缓冲区，专门用于分配微小对象
-- 当分配微小对象时，先检查mcache的tiny allocator缓冲区是否有足够空间
-- 如果有，则直接从缓冲区分配，避免访问mcentral/mheap
-- 如果没有，则从mcentral获取一个新的16B内存块，填充到mcache的tiny allocator缓冲区
-
-## golang垃圾回收
-
-### GC流程
-
-go的垃圾回收（GC）使用的是并发标记清除的方式，结合了三色标记算法和写屏障机制，用于在程序运行时异步地找出不再被引用的堆对象并释放内存，目的是在低停顿时间和高吞吐量之间取得平衡
-
-GC的触发条件：
-
-- 内存分配达到一定的阈值（GOGC环境变量控制，默认100%，表示堆内存使用增长了上次GC后的100%触发）
-- 手动调用runtime.GC()
-
-> <https://cloud.tencent.com/developer/article/1900650>
-
-GC的过程包括四个阶段：
-
-1. 初始标记STW（Stop The World）
-   - 暂停所有用户goroutine，启用写屏障，扫描GC Root对象如全局变量和goroutine栈和寄存器中的引用对象
-   - 将GC Root对象标记为灰色（已标记但未扫描）并放进工作队列
-
-2. 并发标记（Concurrent Marking）
-   - 用户goroutine和GC标记并发运行，使用三色标记算法标记所有可达的对象
-   - 为了防止对象逃逸被误删，通过写屏障来追踪标记过程中的指针变化
-
-3. 标记终止（Mark Termination）
-   - 短暂STW，再次扫描GC Root和goroutine栈，扫描新增的GC Root和指针变化的对象，确保所有可达对象都被标记，关闭写屏障
-   - 并发标记完成后，堆上未被标记的白色对象就被认为是垃圾
-
-4. 清理/回收（Sweep）
-   - 遍历堆上的所有mspan，回收未被标记的白色对象，将其内存释放回mspan的空闲列表
-
-### 三色标记算法
-
-GC把堆上的所有对象分为三类：
-
-1. 白色：尚未被访问的对象，GC会清理它，除非在之后被标记为灰色/黑色
-2. 黑色：已经标记并扫描了其中的所有引用，不会被清除
-3. 灰色：已经标记但还没有扫描其引用的对象，需要递归扫描
-
-GC的目标是把所有从根可达的对象都标记为黑色，其余的白色就是可回收的垃圾
-
-三色标记过程：
-
-1. 初始状态：堆上所有对象都是白色的，GC启动会把根对象（如全局变量、当前goroutine方法栈中的变量、寄存器中的引用）标记为灰色，并放入灰色对象队列
-2. 处理灰色对象：不断从灰色队列中取出对象，扫描该对象的所有字段，找到引用的对象：
-   - 如果引用对象是白色，则标记为灰色并加入灰色队列，原对象标记为黑色
-   - 如果引用对象是黑色/灰色，则跳过，原对象标记为黑色
-3. 循环直到灰色队列为空，即所有从根出发可达的对象都被标记为黑色，剩下的白色对象是不可达的，需要被回收
-
-**三色标记不变性**：黑色对象不能引用白色对象，否则白色对象会被错误清除，实际情况就是可能出现对象被标记为黑色，并发标记的时候引用了一个新增的白色对象
-
-为了保证不出现这种情况，需要在并发阶段使用**写屏障**来保证三色不变性：
-
-- 并发标记阶段，如果goroutine写一个黑色对象的指针指向白色对象，则需要把白色对象标记为灰色，加入灰色队列
-- 保证了黑色对象不会直接引用白色对象，从而维护三色不变性，避免可达对象被误回收
-
 ## golang基本类型
 
 ### slice
@@ -1084,10 +917,6 @@ goroutine的创建和销毁开销很小，适合高并发场景
   - 提供原子加载和存储任意类型的值
   - 适用于需要频繁读写共享数据的场景
 
-### channel和select
-
-详见[channel](#channel)和[select](#select的原理和一些特性项目中怎么使用的select)章节
-
 ### context
 
 - go中context是用来在多个goroutine之间传递取消信号、超时控制、截止时间和请求范围内的共享数据的一种标准机制
@@ -1115,6 +944,64 @@ goroutine的创建和销毁开销很小，适合高并发场景
   - `context.WithTimeout(parent, timeout)`带超时的context
   - `context.WithDeadline(parent, deadline)`带截止时间的context
   - `context.WithValue(parent, key, val)`带键值对数据的context
+
+### 怎么安全读写共享变量
+
+安全读写共享变量的核心问题是避免数据竞争（data race），确保多个goroutine同时访问共享变量时不会导致不一致的状态
+
+- 使用sync.Mutex互斥锁或者sync.RWMutex读写锁保护共享变量，锁绑定的是内存中的一段结构（Mutex），是进程级的资源
+- 使用sync/atomic包的原子操作，依赖CPU指令保证操作的原子性
+
+  ```go
+  var counter atomic.Int64
+  counter.Add(1) //原子加1
+  value := counter.Load() //原子读取
+  counter.Store(10) //设置值为10
+  ```
+
+- 使用channel进行通信，用于不想共享内存，更适合协作的场景
+
+  ```go
+  ch := make(chan int)
+  go func() {
+    var counter int
+    for v := range ch {
+      counter += v
+    }
+  }()
+  ch <- value //发送数据
+  ```
+
+- 使用sync.Map并发安全的map
+
+  ```go
+  var m sync.Map
+
+  m.Store("a", 1)
+  v, ok := m.Load("a")
+  m.Delete("a")
+  ```
+
+### 原子操作和锁的区别
+
+原子操作和锁的核心区别在于它们的实现层级和保护范围：
+
+- 原子操作是保证对单个数据的单次读写操作不可分割，性能很高，不涉及系统内核调用和goroutine挂起操作
+- 锁是操作系统或语言运行时提供的机制，保护的不仅仅是单个变量，而是一个代码块（临界区），虽然锁的开销大于原子操作，但是可以保护一段复杂、涉及多个变量的业务逻辑
+
+### Mutex的模式
+
+go的Mutex有两种模式：
+
+- 正常模式（Normal Mode）
+  - 默认模式，新请求锁的goroutine会和等待队列头部的goroutine竞争锁，新的goroutine会自旋几次，如果期间锁被释放，就可以抢占锁，比让goroutine休眠进入等待队列更高效
+  - 这种模式的吞吐量高，但是可能会导致队列头部goroutine等待很久，即不公平的
+- 饥饿模式（Starvation Mode）
+  - 当一个goroutine等待锁的时间超过一定阈值（1ms），会进入饥饿模式
+  - 在饥饿模式下，锁会优先分配给等待队列头部的goroutine，新的请求锁的goroutine不会自旋而是加入队列尾部等待，保证队列中等待的goroutine不会被饿死，即公平的
+  - 当等待队列为空，或者一个goroutine拿到锁时发现其等待时间小于1ms，就会结束饥饿模式，切回正常模式
+
+> 自旋：goroutine不让出CPU，并在一个小循环里不断尝试获取锁，如果锁在短时间内被释放，就可以继续执行
 
 ## GMP
 
@@ -1199,6 +1086,326 @@ func main() {
   - 当goroutine调用cond.Wait()时，它会阻塞直到被cond.Signal()或者cond.Broadcast()唤醒
 - select中的case阻塞
   - 当select中的所有channel都无法进行时，select会阻塞
+
+## 内存分配
+
+### 栈分配与堆分配
+
+**栈分配**负责处理生命周期短、作用域明确的变量，栈的分配速度非常快，随着函数返回自动释放，因此不需要GC
+**堆分配**负责处理需要跨函数访问、生命周期较长的对象，go的GC主要关注堆上的对象，但是需要扫描栈来找到根引用
+
+当编译器判断某个变量可以安全地分配在栈上时，就不会使用堆分配机制，即编译器的逃逸分析机制：
+
+- 没有逃逸，分配到栈的情况
+  - 变量的生命周期不超过函数的作用域
+  - 变量不会在函数外部被引用
+  - 变量大小在编译时可以确定且不会过大
+  - 没有通过指针、interface{}、slice、map、channel等方式逃逸
+
+- 逃逸到堆上的情况
+  - 方法返回局部变量的指针
+  - 变量被赋值给interface{}
+  - 变量被发送到channel
+  - 变量被存储到slice、map等动态数据结构中
+  - 变量太大（通常超过64KB）
+  - 在闭包中被捕获且闭包逃逸
+
+> **闭包**（closure）是函数+外层函数作用域中被这个函数引用的变量，闭包可以让函数在外层函数返回之后，依然可以访问和修改外部作用域的变量
+> 比如下面这个方法outer()已经完成了，但是x依然能被闭包访问
+
+```go
+func outer() func() {
+    x := 10
+    return func() {
+        fmt.Println(x)  // 这个函数就是闭包
+    }
+}
+```
+
+### 判断栈分配和堆分配
+
+使用`go build -gcflags '-m'`命令编译代码，查看编译器的逃逸分析结果
+
+```go
+./main.go:10:6: moved to heap: x
+./main.go:15:13: &y escapes to heap
+./main.go:20:20: c escapes to heap
+```
+
+编译器会输出每个变量的分配决策，标记为`escapes to heap`表示逃逸到堆上，标记为`moved to heap`表示分配在栈上，否则就是栈分配
+
+### 内存分配机制
+
+go的堆内存机制借鉴了Google的TCMalloc分配器，采用多级内存分配（MCache-MCentral-MHeap）来减少锁竞争和碎片化
+
+- **page**
+  - 最小的物理分配单位，通常是8KB
+  - 是mspan管理的基本单位
+  - mheap按页分配内存
+- **mspan**
+  - 一段连续的page组成的内存块，堆内存的基本管理单元
+  - 用于管理某一size class对象（特定大小）的分配
+  - 将page划分为多个小块（object），每个span对应一个size class（大小等级67个）
+  - span的状态有：in-use/free/garbage collected等
+- **mcache**
+  - 每个Processor独有，为了减少锁竞争
+  - mcache为每个size class维护2个span：scan span和noscan span，即含指针和不含指针的span，来加快GC扫描
+  - 内存分配优先从mcache获取span进行分配，不足时从mcentral获取
+- **mcentral**
+  - 每种size class拥有一个mcentral
+  - 管理多个span，维护free和in-use的span列表
+  - 为mcache提供span
+  - 从mheap申请新的span来扩容
+- **mheap**
+  - 管理所有的物理页内存
+  - 负责向操作系统申请内存
+  - 为mcentral提供span，包含大对象分配逻辑
+
+使用多级内存分配的优势：
+
+1. 减少锁竞争：每个Processor有自己的mcache，减少了对全局mcentral和mheap的锁竞争
+2. 减少内存碎片：通过67种size class的划分，避免了小对象的内存碎片问题
+3. 提高分配效率：小对象可以直接从mcache获取，避免了频繁的全局锁操作
+4. 支持大对象分配：mheap可以直接从操作系统申请大块内存，适合大对象的分配需求
+
+### go的三层内存分配器
+
+- **mcache**：每个Processor有自己的mcache，实现小对象（小于32KB）的无锁快速分配
+- **mcentral**：集中管理每个size class的span池，提供给mcache使用
+- **mheap**：全局堆管理器，负责大对象（大于32KB）的分配和向OS申请内存
+
+堆内存是若干page（8KB）组成，**mspan**是一组连续的page并划分为大小相等的slot（对象槽），用于存放特定size class的对象，大小由size class决定，每个mspan管理一种size class，并负责对象分配、空闲管理和GC跟踪
+
+**size class**是一组预设的对象大小值（从8B到32KB有67个大小，也可以加上size class 0表示大对象），用来提升内存分配的效率，更大的对象需要从mheap通过page级别分配
+
+堆内存分配的流程：
+
+1. 分配请求到达时，判断对象的大小：
+   - 如果是小于16B的微小对象，使用tiny allocator
+   - 如果是大于32KB的大对象，直接从mheap分配，以page为单位进行管理
+2. 对于16B到32KB的对象，选择最接近且大于请求大小的size class，检查mcache中对应size class是否有空闲span，有则分配
+3. 如果mcache没有该size class的空闲span，向mcentral请求一个新的span
+4. mcentral检查对应size class的span池，如果有空闲span，则分配给mcache
+5. 如果没有，则向mheap请求分配新的span，mheap从操作系统申请内存，创建新的span并返回给mcentral
+6. mcentral将新的span分配给mcache，mcache再进行对象分配
+
+例如执行`x := make([]byte, 100)`
+
+1. 计算对象的size class：100字节属于某个size class（比如128B）
+2. 当前Processor的mcache找到对应size class的span
+3. 如果mcache有空闲的span，则分配并返回
+4. 如果没有，从mcentral拉一个新的span填充到mcache
+5. mcentral如果也没有，向mheap请求分配新的span
+6. mheap如果不够，则向操作系统申请内存
+
+### tiny allocator
+
+tiny allocator是在三层分配器之上的一个特殊优化，专门用于分配微小对象（小于16B且不包含指针的对象），通过将多个微小对象打包在一个16字节的内存块中进行分配，减少内存碎片和分配开销
+
+如bool、int8、uint8、byte的大小都是1B，rune、int16、uint16是2B，int32、uint32、float32是4B，int64、uint64、float64是8B，这些类型的变量如果频繁分配会导致大量的内存碎片和分配开销
+
+tiny allocator通过以下方式优化：
+
+- 每个Processor的mcache维护一个16B的内存缓冲区，专门用于分配微小对象
+- 当分配微小对象时，先检查mcache的tiny allocator缓冲区是否有足够空间
+- 如果有，则直接从缓冲区分配，避免访问mcentral/mheap
+- 如果没有，则从mcentral获取一个新的16B内存块，填充到mcache的tiny allocator缓冲区
+
+## 垃圾回收
+
+### GC流程
+
+go的垃圾回收（GC）使用的是并发标记清除的方式，结合了三色标记算法和写屏障机制，用于在程序运行时异步地找出不再被引用的堆对象并释放内存，目的是在低停顿时间和高吞吐量之间取得平衡
+
+GC的触发条件：
+
+- 内存分配达到一定的阈值（GOGC环境变量控制，默认100%，表示堆内存使用增长了上次GC后的100%触发）
+- 手动调用runtime.GC()
+
+> <https://cloud.tencent.com/developer/article/1900650>
+
+GC的过程包括四个阶段：
+
+1. 初始标记STW（Stop The World）
+   - 暂停所有用户goroutine，启用写屏障，扫描GC Root对象如全局变量和goroutine栈和寄存器中的引用对象
+   - 将GC Root对象标记为灰色（已标记但未扫描）并放进工作队列
+
+2. 并发标记（Concurrent Marking）
+   - 用户goroutine和GC标记并发运行，使用三色标记算法标记所有可达的对象
+   - 为了防止对象逃逸被误删，通过写屏障来追踪标记过程中的指针变化
+
+3. 标记终止（Mark Termination）
+   - 短暂STW，再次扫描GC Root和goroutine栈，扫描新增的GC Root和指针变化的对象，确保所有可达对象都被标记，关闭写屏障
+   - 并发标记完成后，堆上未被标记的白色对象就被认为是垃圾
+
+4. 清理/回收（Sweep）
+   - 遍历堆上的所有mspan，回收未被标记的白色对象，将其内存释放回mspan的空闲列表
+
+### 三色标记算法
+
+GC把堆上的所有对象分为三类：
+
+1. 白色：尚未被访问的对象，GC会清理它，除非在之后被标记为灰色/黑色
+2. 黑色：已经标记并扫描了其中的所有引用，不会被清除
+3. 灰色：已经标记但还没有扫描其引用的对象，需要递归扫描
+
+GC的目标是把所有从根可达的对象都标记为黑色，其余的白色就是可回收的垃圾
+
+三色标记过程：
+
+1. 初始状态：堆上所有对象都是白色的，GC启动会把根对象（如全局变量、当前goroutine方法栈中的变量、寄存器中的引用）标记为灰色，并放入灰色对象队列
+2. 处理灰色对象：不断从灰色队列中取出对象，扫描该对象的所有字段，找到引用的对象：
+   - 如果引用对象是白色，则标记为灰色并加入灰色队列，原对象标记为黑色
+   - 如果引用对象是黑色/灰色，则跳过，原对象标记为黑色
+3. 循环直到灰色队列为空，即所有从根出发可达的对象都被标记为黑色，剩下的白色对象是不可达的，需要被回收
+
+**三色标记不变性**：黑色对象不能引用白色对象，否则白色对象会被错误清除，实际情况就是可能出现对象被标记为黑色，并发标记的时候引用了一个新增的白色对象
+
+为了保证不出现这种情况，需要在并发阶段使用**写屏障**来保证三色不变性：
+
+- 并发标记阶段，如果goroutine写一个黑色对象的指针指向白色对象，则需要把白色对象标记为灰色，加入灰色队列
+- 保证了黑色对象不会直接引用白色对象，从而维护三色不变性，避免可达对象被误回收
+
+## 性能分析
+
+### 内存泄漏
+
+go的内存泄漏是指本来不再被使用的对象，仍然被程序持有引用，导致GC无法回收，常见的内存泄漏的场景有：
+
+- goroutine泄漏：goroutine因为阻塞、死循环等原因无法退出，导致其栈上的变量无法被GC回收
+- 全局变量持有引用：全局变量或者单例模式持有对象的引用，导致对象无法被回收
+- map/slice底层持有引用，导致对象无法被回收
+
+### 性能分析工具
+
+![golang性能分析](../insights/golang性能分析.md)
+
+1. **pprof**是go内置的net/http/pprof包提供的性能分析工具，可以在程序运行时采集内存、CPU、锁、阻塞等信息，并提供分析与可视化的结果
+   - 可用于分析CPU使用情况、heap内存分配情况、Alloc分配热点、goroutine泄漏、阻塞分析、锁竞争等
+
+2. **trace**工具，可以通过`go test -trace`命令，或者pprof的trace接口，或者`runtime.trace`生成trace文件，并使用`go tool trace`进行可视化分析
+   - 可以查看goroutine调度、syscall、网络I/O等事件，帮助定位性能瓶颈和内存泄漏
+
+3. go的benchmark工具，可以通过`go test -bench`命令运行基准测试，并结合pprof进行内存分析
+   - 可以进行算法对比、判断是否减少了内存分配
+
+4. 使用`go build -gcflags '-m'`查看编译器的逃逸分析结果，判断变量是栈分配还是堆分配
+   - 可以查看内存分配情况、排查GC压力大的原因、struct/slice/map等数据结构的内存布局
+
+5. 使用`GODEBUG=gctrace=1`环境变量开启GC日志，观察GC的触发频率、停顿时间、堆内存使用情况
+   - 通过分析GC日志，可以判断是否存在内存泄漏、GC压力过大等问题
+
+### benchmark如何使用
+
+benchmark是一个用于对比和量化性能的试验工具，而不是线上的性能分析工具，作用是用go test在可控环境下，反复执行代码的到稳定的性能数据（时间/分配/吞吐）
+
+使用规范是函数的命名要是：
+
+```go
+func BenchmarkXxx(b *testing.B)
+```
+
+例如：想要比较使用mutex和atomic进行计数器的性能差异
+
+- 实现1：使用mutex的计数器
+
+  ```go
+  type CounterMutex struct {
+      mu sync.Mutex
+      n  int64
+  }
+
+  func (c *CounterMutex) Inc() {
+      c.mu.Lock()
+      c.n++
+      c.mu.Unlock()
+  }
+  ```
+
+- 实现2：使用atomic的计数器
+
+  ```go
+  type CounterAtomic struct {
+      n int64
+  }
+
+  func (c *CounterAtomic) Inc() {
+      atomic.AddInt64(&c.n, 1)
+  }
+  ```
+
+- 编写串行无并发的benchmark测试
+
+  ```go
+  func BenchmarkCounterMutex(b *testing.B) {
+      c := &CounterMutex{}
+      for i := 0; i < b.N; i++ {
+          c.Inc()
+      }
+  }
+
+  func BenchmarkCounterAtomic(b *testing.B) {
+      c := &CounterAtomic{}
+      for i := 0; i < b.N; i++ {
+          c.Inc()
+      }
+  }
+  ```
+
+  ```bash
+  go test -bench=Counter -benchmem
+  ```
+
+  - 的到的结果类似：
+
+  ```text
+  BenchmarkCounterMutex-8     50000000    30 ns/op    0 allocs/op
+  BenchmarkCounterAtomic-8   200000000     6 ns/op    0 allocs/op
+  ```
+
+  - 证明串行情况下atomic性能好很多
+
+- 编写并发的benchmark测试
+
+  ```go
+  func BenchmarkCounterMutexParallel(b *testing.B) {
+      c := &CounterMutex{}
+      b.RunParallel(func(pb *testing.PB) {
+          for pb.Next() {
+              c.Inc()
+          }
+      })
+  }
+
+  func BenchmarkCounterAtomicParallel(b *testing.B) {
+      c := &CounterAtomic{}
+      b.RunParallel(func(pb *testing.PB) {
+          for pb.Next() {
+              c.Inc()
+          }
+      })
+  }
+  ```
+
+  ```bash
+  go test -bench=Counter -benchmem
+  ```
+
+  - 的到的结果类似：
+
+  ```text
+  BenchmarkCounterMutexParallel-8    20000000    90 ns/op
+  BenchmarkCounterAtomicParallel-8   30000000    40 ns/op
+  ```
+
+  - 证明并发情况下atomic仍然优于mutex，但差距缩小了
+
+### 避免内存泄漏
+
+- goroutine要有退出路径：`select+ctx.Done()`、`channel close`
+- map/cache要有淘汰机制
+- 大的slice使用完之后要置为nil
+- 资源要显示释放：`context cancel()`
 
 ## 协程池
 

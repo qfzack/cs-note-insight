@@ -26,7 +26,8 @@ const fileStructure = {
     ],
     insights: [
         'insights/GMP.md',
-        'insights/内存分配与垃圾回收.md'
+        'insights/内存分配与垃圾回收.md',
+        'insights/golang性能分析.md',
     ],
     docs: [
         'docs/interviews.md',
