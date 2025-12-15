@@ -151,95 +151,6 @@ K8s原生支持的资源类型，即Kind字段中可以直接使用的有：
 - 扩展机制
   - CustomResourceDefinition (CRD)：实现自定义的资源类型
 
-### API Server的作用是什么
-
-apiserver是k8s的核心组件，是唯一直接与etcd直接交互的组件，主要作用是负责接收k8s的请求、鉴权、存储和通知变更信息：
-
-- 统一入口：所有的组件（kubectl、controller、scheduler、kubelet、operator）都是通过apiserver来读写资源对象，apiserver是k8s的REST API服务器
-- 鉴权与认证：对接入的请求进行认证、授权、准入控制
-- 数据库存储代理：apiserver不直接存储数据，而是作为代理把对象存入etcd，并实现对etcd的封装
-- watch通知：对外提供资源变化的watch流，供controller、client-go、kubectl watch等订阅，通知变更事件
-- 数据校验和默认值填充：在资源创建时会自动补全默认值和进行字段合法性校验
-
-### API Server的架构
-
-- 认证（Authentication）：支持Token、Client Certificate、Webhook、OIDC等，返回UserInfo，供后续鉴权使用
-- 鉴权（Authorization）：判断用户是否有权限操作资源，支持RBAC、ABAC、Webhook、Node角色等
-- 准入控制器（Admission Controller）：在资源写入etcd之前进行检查（拒绝、修改、审计），控制插件有namespaceLifecycle、LimitRanger、PodSecurity、MutatingAdmissionWebhook
-- 请求处理：
-  - HTTP服务器（REST API handler）：支持K8s资源的标准REST接口
-  - 路由和版本管理：管理不同资源组（core、apps、batch）和版本（v1、v1beta1），路由到对应的资源处理器
-  - 序列化和反序列化：使用protobuf或json编解码请求体与etcd存储体
-  - 存储接口：所有资源都转换为键值对写入etcd
-  - 聚合层（API Aggregation Layer）：支持通过注册APIServer资源把外部API接入K8s API路径，比如Metrics server、Custom API Server
-
-### API Server如何保证与其他组件的消息的及时同步
-
-一般来说实现消息同步有两种方式：1.客户端轮询获取最新的状态，2.apiserver通知客户端
-list-watch机制可以较低apiserver的请求压力，其本质就是客户端监听k8s资源的变化并执行相应的处理逻辑（生产者消费者），并且需要满足：
-
-- 实时性：当资源变更，相关的组件要尽快感知
-- 消息的顺序性：消息要按照先后发生的顺序被发送
-- 保证信息不丢失或者可靠的重新获取机制
-
-list-watch机制是k8s中各个组件从apiserver获取资源状态并持续监听变化的标准模式，其中list是通过apiserver获取全部资源，watch是基于list返回结果中资源的resourceVersion请求apiserver并启动持续监听（基于http长连接）
-
-informer是client-go的一个组件，实现了对list-watch的封装用于自动管理资源的监听、缓存和事件分发：
-
-- 初始化阶段：使用list获取所有资源并填充缓存
-- 持续监听：通过watch监听后续变化
-- 缓存更新：将watch到的事件同步到本地缓存
-- 事件分发：触发注册的事件处理方法
-
-### client-go是什么
-
-client-go是k8s官方提供的go语言SDK，用于与k8s apiserver通信的客户端库，是开发k8s应用的标准工具包
-
-client-go提供了完整的k8s交互能力：
-- clientset：访问所有k8s资源的客户端集合
-- informer：监听资源变化的高级封装
-- workqueue：处理事件的工作队列
-- restclient：底层http客户端
-- discovery client：发现api资源信息
-
-### K8s各模块如何与API server通信
-
-Kubernetes的各个组件（例如kubelet、kube-proxy、scheduler、controller-manager）都会与API Server进行通信
-
-API server的作用：
-
-- 统一接口：提供RESTful API接口
-- 认证授权：验证客户端身份和权限
-- 数据验证：验证API对象的格式和内容
-- 数据持久化：与etcd交互存储集群状态
-- 事件通知：通过watch机制推送资源变更
-
-- kubelet：
-  - 主动向API server拉取信息，并定期上报状态
-  - 监听自己所在节点的pod资源（watch pod），上报pod状态（心跳、资源使用等），创建或删除容器后上报容器状态
-  - 通过kubeconfig文件中的凭证，通过HTTPS请求API server（/api/v1/nodes、/api/v1/pods）
-- controller-manager：
-  - 通过informer/watch主动监听资源变化，并更新状态
-  - 主要是deployment、replicaset、node、pod状态等资源的监控与控制，例如deploymentController监控deployment对象并创建replicaset
-  - 使用go-client+informer/watch机制与API server通信
-- scheduler：
-  - watch未调度的pod，对其绑定Node
-  - 监听状态为pending且未指定Node的pod，使用调度策略计算后，调用API server的/binding API更新pod的spec.nodeName
-  - 基于client-go访问API server，通过HTTP PUT/POST提交调度结果
-- kubectl：
-  - 用户通过kubectl向API server发起命令请求
-  - 用于查询、创建、删除资源，实际是将命令翻译成对应的API server的REST请求
-  - 本地使用kubeconfig中的集群地址、认证凭据等信息，发起HTTPS请求到API server
-- etcd：
-  - API server与etcd通信，其他模块不直接访问etcd
-  - API server作为唯一客户端，读写集群的所有状态数据
-  - 通过gRPC over TLS进行通信
-- CoreDNS、Ingress Controller、CRI/O、CNI等插件
-  - 这些组件直接与API server交互：
-    - CoreDNS watch service和endpoints的信息
-    - Ingress Controller watch ingress资源，根据规则配置负载均衡
-    - 网络/存储插件可能通过kubelet调用API server，间接同步信息
-
 ### scheduler的作用及实现原理
 
 核心职责：
@@ -744,6 +655,156 @@ Job的特点：
 - cronjob是在特定时间周期自动创建job的控制器
 - cronjob不直接运行pod，只是按照调度规则周期性地创建job，每个job再启动Pod完成任务
 
+## API Server
+
+### API Server的作用是什么
+
+apiserver是k8s的核心组件，是唯一直接与etcd直接交互的组件，主要作用是负责接收k8s的请求、鉴权、存储和通知变更信息：
+
+- 统一入口：所有的组件（kubectl、controller、scheduler、kubelet、operator）都是通过apiserver来读写资源对象，apiserver是k8s的REST API服务器
+- 鉴权与认证：对接入的请求进行认证、授权、准入控制
+- 数据库存储代理：apiserver不直接存储数据，而是作为代理把对象存入etcd，并实现对etcd的封装
+- watch通知：对外提供资源变化的watch流，供controller、client-go、kubectl watch等订阅，通知变更事件
+- 数据校验和默认值填充：在资源创建时会自动补全默认值和进行字段合法性校验
+
+### API Server的架构
+
+- 认证（Authentication）：支持Token、Client Certificate、Webhook、OIDC等，返回UserInfo，供后续鉴权使用
+- 鉴权（Authorization）：判断用户是否有权限操作资源，支持RBAC、ABAC、Webhook、Node角色等
+- 准入控制器（Admission Controller）：在资源写入etcd之前进行检查（拒绝、修改、审计），控制插件有namespaceLifecycle、LimitRanger、PodSecurity、MutatingAdmissionWebhook
+- 请求处理：
+  - HTTP服务器（REST API handler）：支持K8s资源的标准REST接口
+  - 路由和版本管理：管理不同资源组（core、apps、batch）和版本（v1、v1beta1），路由到对应的资源处理器
+  - 序列化和反序列化：使用protobuf或json编解码请求体与etcd存储体
+  - 存储接口：所有资源都转换为键值对写入etcd
+  - 聚合层（API Aggregation Layer）：支持通过注册APIServer资源把外部API接入K8s API路径，比如Metrics server、Custom API Server
+
+### API Server如何保证与其他组件的消息的及时同步
+
+一般来说实现消息同步有两种方式：1.客户端轮询获取最新的状态，2.apiserver通知客户端
+list-watch机制可以较低apiserver的请求压力，其本质就是客户端监听k8s资源的变化并执行相应的处理逻辑（生产者消费者），并且需要满足：
+
+- 实时性：当资源变更，相关的组件要尽快感知
+- 消息的顺序性：消息要按照先后发生的顺序被发送
+- 保证信息不丢失或者可靠的重新获取机制
+
+list-watch机制是k8s中各个组件从apiserver获取资源状态并持续监听变化的标准模式，其中list是通过apiserver获取全部资源，watch是基于list返回结果中资源的resourceVersion请求apiserver并启动持续监听（基于http长连接）
+
+informer是client-go的一个组件，实现了对list-watch的封装用于自动管理资源的监听、缓存和事件分发：
+
+- 初始化阶段：使用list获取所有资源并填充缓存
+- 持续监听：通过watch监听后续变化
+- 缓存更新：将watch到的事件同步到本地缓存
+- 事件分发：触发注册的事件处理方法
+
+### client-go是什么
+
+client-go是k8s官方提供的go语言SDK，用于与k8s apiserver通信的客户端库，是开发k8s应用的标准工具包
+
+client-go提供了完整的k8s交互能力：
+- clientset：访问所有k8s资源的客户端集合
+- informer：监听资源变化的高级封装
+- workqueue：处理事件的工作队列
+- restclient：底层http客户端
+- discovery client：发现api资源信息
+
+### K8s各模块如何与API server通信
+
+Kubernetes的各个组件（例如kubelet、kube-proxy、scheduler、controller-manager）都会与API Server进行通信
+
+API server的作用：
+
+- 统一接口：提供RESTful API接口
+- 认证授权：验证客户端身份和权限
+- 数据验证：验证API对象的格式和内容
+- 数据持久化：与etcd交互存储集群状态
+- 事件通知：通过watch机制推送资源变更
+
+- kubelet：
+  - 主动向API server拉取信息，并定期上报状态
+  - 监听自己所在节点的pod资源（watch pod），上报pod状态（心跳、资源使用等），创建或删除容器后上报容器状态
+  - 通过kubeconfig文件中的凭证，通过HTTPS请求API server（/api/v1/nodes、/api/v1/pods）
+- controller-manager：
+  - 通过informer/watch主动监听资源变化，并更新状态
+  - 主要是deployment、replicaset、node、pod状态等资源的监控与控制，例如deploymentController监控deployment对象并创建replicaset
+  - 使用go-client+informer/watch机制与API server通信
+- scheduler：
+  - watch未调度的pod，对其绑定Node
+  - 监听状态为pending且未指定Node的pod，使用调度策略计算后，调用API server的/binding API更新pod的spec.nodeName
+  - 基于client-go访问API server，通过HTTP PUT/POST提交调度结果
+- kubectl：
+  - 用户通过kubectl向API server发起命令请求
+  - 用于查询、创建、删除资源，实际是将命令翻译成对应的API server的REST请求
+  - 本地使用kubeconfig中的集群地址、认证凭据等信息，发起HTTPS请求到API server
+- etcd：
+  - API server与etcd通信，其他模块不直接访问etcd
+  - API server作为唯一客户端，读写集群的所有状态数据
+  - 通过gRPC over TLS进行通信
+- CoreDNS、Ingress Controller、CRI/O、CNI等插件
+  - 这些组件直接与API server交互：
+    - CoreDNS watch service和endpoints的信息
+    - Ingress Controller watch ingress资源，根据规则配置负载均衡
+    - 网络/存储插件可能通过kubelet调用API server，间接同步信息
+
+### list/watch机制和informer是什么
+
+### 如何减少API server的压力
+
+API server主要的压力来源是：
+
+- 大量的请求导致频繁的list/watch操作
+- etcd的I/O和锁竞争
+- 大量对象的序列化和反序列化
+- controller/operator等组件的高频轮询
+- kubectl/自动化工具的频繁使用
+
+因此可以通过以下方式减少API server的压力
+
+从调用方的层面：
+
+1. 避免轮询list操作，使用watch和informer监听资源变化
+   - list操作会获取全部资源，频繁list会增加API server和etcd的负载
+   - watch机制是基于长连接的增量更新，减少数据传输量
+   - 使用client-go的informer可以自动管理list-watch，减少重复请求
+2. 合理使用label/selector过滤资源
+   - 通过标签选择器只获取需要的资源，减少不必要的资源扫描和传输，例如：使用label查询`kubectl get pods -l app=nginx`
+   - 如果不使用selector，list会从etcd获取所有资源并返回，增加负载
+3. 限制请求速率
+   - 在客户端控制请求速率，如client-go可以配置QPS每秒请求数和Burst最大并发请求数
+4. controller要使用workqueue异步处理事件
+   - workqueue是一种队列机制，用于把无序、高频、重复的事件转化为可控、限速、幂等的业务处理，可以减少对API server的直接请求，workqueue实现了：
+     - 自动去重（同一个key只处理一次），这样如果短时间内有大量更新，最终只会reconcile一次
+     - 限速处理使用指数退避算法，失败的请求会延迟重试，防止短时间内大量请求挤占API server
+
+从API server内部机制：
+
+1. 启用Watch Cache（默认开启）
+   - API server内部使用的缓存机制，list请求直接走内存cache，减少对etcd的直接访问
+   - 通过watch机制及时更新cache，保证和etcd的数据一致性
+2. 启用API Priority&Fairness（APF）
+   - APF是API server默认开启的流量调度器，对不同来源、不同类型的请求分组、排队、限流，保证关键请求优先处理，防止单一客户端请求过载，这就是为什么operator即使频繁请求也不会影响正常pod调度
+   - APF由三个部分组成：
+     - FlowSchema：定义请求的分类规则和优先级
+     - PriorityLevelConfiguration：定义每个优先级的队列和限流策略
+     - 请求调度器：根据FlowSchema和PriorityLevelConfiguration对请求进行调度
+3. 限制API server的并发处理数
+   - API server在APF之后还有全局的并发限制，超过限制的请求会被排队等待
+   - `--max-requests-inflight`用于限制API server同时处理的非watch请求数量
+   - `--max-mutating-requests-inflight`用于限制API server同时处理的写请求数量
+
+从etcd层面：
+
+1. 减少写操作
+   - 减少状态变化的次数、合并写操作、把无意义状态从etcd挪走
+   - k8s只有在对象状态发生变化时才会写入etcd，包括spec、status和metadata的变化，因此高频的状态更新、metadata变更会导致大量写操作，因此可以：
+     - 判断状态发生变化才更新
+     - 合并多次更新为一次写入
+     - 不要把etcd当日志/心跳存储
+     - 延迟写入，把频繁变化的状态放到内存中，定期批量写入
+2. 控制对象的数量和大小
+   - 减少不必要的资源对象，避免大量小对象
+   - 定期清理过期资源，防止etcd数据膨胀
+
 ## ETCD
 
 ### 简述ETCD及其特点
@@ -847,6 +908,84 @@ etcd的性能问题通常体现在延迟高、写入慢、集群不稳定，排�
 - 检查watch和lease压力：过多的watch会导致CPU和内存占用增加，租约（lease）数量过多也会拖慢etcd
 - 检查满请求日志（关键）：`journalctl -u etcd | grep "took too long"`定位具体的慢写操作
 - 使用metrics+grafana监控：使用etcd暴露的prometheus指标可以监控请求速率、WAL写入延迟、DB fsync延迟、leader选举频率
+
+
+## Kube-proxy
+
+### kube-proxy的作用
+
+kube-proxy是k8s中网络代理的组件，运行在每个Node节点上，负责将service请求转发到后端pod，实现service的通信和负载均衡，通过维护iptables和ipvs规则，实现高性能的四层转发，是K8s的核心组件之一
+
+主要作用：
+
+- **实现service的访问代理**：service提供了统一的访问入口（clusterIP、nodePort、loadBalancer），kube-proxy负责根据service的规则，将请求转发到后端的Pod上（即Endpoints）
+- **实现负载均衡**：当一个server有多个pod时，kube-proxy会根据一定的策略（如round-robin）将请求负载均衡地分发到这些pod，从而实现集群内的L4（TCP/UDP）负载均衡
+- **维护网络转发规则**：kube-proxy会监听k8s API server的service和endpoints的变更，从而动态修改本节点的iptables规则（或ipvs规则），实现服务转发
+
+kube-proxy的三种模式：
+
+- userspace：早期模式，用于socket转发，性能较差
+- iptables：通过iptables规则实现转发，无需用户态干预，性能较好
+- ipvs：基于Linux IPVS（内核级负载均衡），性能最佳
+
+### kube-proxy iptables的原理是什么
+
+iptables是linux系统内核提供的用户空间命令行工具，用于配置内核的Netfilter框架，实现网络数据包的过滤（防火墙）、数据包的NAT转发、数据包的记录与丢弃，是**kube-proxy的默认模式**
+
+kubeproxy使用iptables模式时，会监听service和endpoint的变更，自动生成一系列的NAT和转发规则，实现集群内service到后端pod的负载均衡
+
+- kube-proxy监听资源变化：监听k8s的service、endpoint等资源变更，通过API server获取变更信息
+- 动态生成iptables规则：根据监听到的资源，生成一组iptables NAT规则，写入以下几个自定义的链：
+  - KUBE-SERVICES：匹配所有服务流量入口
+  - KUBE-SVC-xxxx：每个service对应一条链
+  - KUBE-SEP-xxxx：每个pod（endpoint）对应一条链
+- 数据包转发过程：
+  - 请求进入->PREROUTING->KUBE-SERVICES（匹配service IP）->KUBE-SVC-xxxx（跳转到对应的service链）->KUBE-SEP-xxxx（随机选择一个后端pod链）->DNAT到pod的IP:Port
+- 负载均衡实现：KUBE-SVC-xxxx中使用`-m statistic --mode random`或`nth`模式实现随机转发，并且规则动态更新
+
+缺点：iptables是链表结构，规则较多时查找和更新效率低，可观测性和调试复杂
+> ipvs需要额外的内核模块支持（如ip_vs,ip_vs_rr等），可能有些系统默认没有加载或编译这些模块，iptables是Linux的标准组成部分，很早的内核版本就支持
+
+### kube-proxy ipvs的原理是什么
+
+ipvs（IP Virtual Server）是Linux内核中的四层（L4）负载均衡框架，在内核中维护连接表并基于调度算法将请求高效的转发到后端pod上
+
+工作机制：
+
+- kube-proxy监听资源变化：监听service和endpoints的变化，当service或pod有更新会更新内核中的ipvs转发表
+- 动态编写ipvs的规则：
+  - 不适用iptables，而是调用内核API（netlink）直接配置ipvs转发表
+  - 每个service（VIP+Port）会映射成一个虚拟服务（virtual service），VS是外界访问的入口
+  - 每个后端pod（endpoints）会注册成一个真实服务器（real server）挂在VS上
+- 连接跟踪：
+  - ipvs内部维护一个连接表（Connection Table）
+  - 首次请求选定目标RS
+  - 后续请求直接从连接表中取出目标pod，无需重新调度
+- 支持多种负载均衡调度算法：Round Robin（轮询/默认）、Least Connection（最少连接）、Weight Round Robin（加权轮询）、Destination Hashing（基于目标地址哈希）、Source Hashing（基于源地址哈希）
+
+### kube-proxy ipvs和iptables的异同点
+
+kube-proxy的iptables模式通过生成Netfilter规则链来转发service流量，而ipvs模式基于内核级的IP Virtual Server框架，实现连接跟踪和高性能的四层负载均衡
+
+相同点：
+
+- 都是用于service到pod的流量转发
+- 都会监听API server的service和endpoints的变更
+- 都由kube-proxy在每个Node节点本地运行
+- 都使用DNAT（目标地址转换）把service ip映射到pod ip
+- 都支持TCP、UDP，支持cluster IP、NodePort、LoadBalancer等类型
+- 都只工作在L4层（不能做HTTP等应用层的转发）
+
+不同点：
+
+- 实现方式：iptables使用Metfilter规则链和DNAT做转发，ipvs使用Linux IPVS框架，维护虚拟服务和连接表
+- 数据结构：iptables是链表结构，规则越多越慢，ipvs是基于哈希表，查找效率高
+- 转发机制：iptables每次匹配规则链+随机选择pod，ipvs第一次调度后进入连接表，后续直接查表
+- 负载均衡策略：iptables是固定的轮询，ipvs支持多种调度算法
+- 服务更新：iptanles更新全套iptables规则，规模大时较慢，ipvs仅更新差异部分，效率高
+- 性能：iptables规则多时性能下降，ipvs性能更高，适合大集群
+- 系统依赖：iptables是Linux默认支持，ipvs需要内核加载ip_vs模块
+- 可观测性：iptables查看规则`iptables -L -t nat`，ipvs查看规则`ipvsadm -Ln`
 
 ## Pod
 
@@ -1216,83 +1355,6 @@ deployment通过Revision（修订版本）管理机制实现回滚功能
 - 每次变更deployment（如更新对象、环境变量）时，都会生成一个新的replicaset，称为一个新Revision
 - 旧版本的replicaset不会被删除，而是被保留在集群中（通过.spec.revisionHistoryLimit设置，默认最多10个）
 - 回滚就是将当前deployment指向先前某一个replicaset，并调整副本数量来恢复旧版本的pod
-
-## Kube-proxy
-
-### kube-proxy的作用
-
-kube-proxy是k8s中网络代理的组件，运行在每个Node节点上，负责将service请求转发到后端pod，实现service的通信和负载均衡，通过维护iptables和ipvs规则，实现高性能的四层转发，是K8s的核心组件之一
-
-主要作用：
-
-- **实现service的访问代理**：service提供了统一的访问入口（clusterIP、nodePort、loadBalancer），kube-proxy负责根据service的规则，将请求转发到后端的Pod上（即Endpoints）
-- **实现负载均衡**：当一个server有多个pod时，kube-proxy会根据一定的策略（如round-robin）将请求负载均衡地分发到这些pod，从而实现集群内的L4（TCP/UDP）负载均衡
-- **维护网络转发规则**：kube-proxy会监听k8s API server的service和endpoints的变更，从而动态修改本节点的iptables规则（或ipvs规则），实现服务转发
-
-kube-proxy的三种模式：
-
-- userspace：早期模式，用于socket转发，性能较差
-- iptables：通过iptables规则实现转发，无需用户态干预，性能较好
-- ipvs：基于Linux IPVS（内核级负载均衡），性能最佳
-
-### kube-proxy iptables的原理是什么
-
-iptables是linux系统内核提供的用户空间命令行工具，用于配置内核的Netfilter框架，实现网络数据包的过滤（防火墙）、数据包的NAT转发、数据包的记录与丢弃，是**kube-proxy的默认模式**
-
-kubeproxy使用iptables模式时，会监听service和endpoint的变更，自动生成一系列的NAT和转发规则，实现集群内service到后端pod的负载均衡
-
-- kube-proxy监听资源变化：监听k8s的service、endpoint等资源变更，通过API server获取变更信息
-- 动态生成iptables规则：根据监听到的资源，生成一组iptables NAT规则，写入以下几个自定义的链：
-  - KUBE-SERVICES：匹配所有服务流量入口
-  - KUBE-SVC-xxxx：每个service对应一条链
-  - KUBE-SEP-xxxx：每个pod（endpoint）对应一条链
-- 数据包转发过程：
-  - 请求进入->PREROUTING->KUBE-SERVICES（匹配service IP）->KUBE-SVC-xxxx（跳转到对应的service链）->KUBE-SEP-xxxx（随机选择一个后端pod链）->DNAT到pod的IP:Port
-- 负载均衡实现：KUBE-SVC-xxxx中使用`-m statistic --mode random`或`nth`模式实现随机转发，并且规则动态更新
-
-缺点：iptables是链表结构，规则较多时查找和更新效率低，可观测性和调试复杂
-> ipvs需要额外的内核模块支持（如ip_vs,ip_vs_rr等），可能有些系统默认没有加载或编译这些模块，iptables是Linux的标准组成部分，很早的内核版本就支持
-
-### kube-proxy ipvs的原理是什么
-
-ipvs（IP Virtual Server）是Linux内核中的四层（L4）负载均衡框架，在内核中维护连接表并基于调度算法将请求高效的转发到后端pod上
-
-工作机制：
-
-- kube-proxy监听资源变化：监听service和endpoints的变化，当service或pod有更新会更新内核中的ipvs转发表
-- 动态编写ipvs的规则：
-  - 不适用iptables，而是调用内核API（netlink）直接配置ipvs转发表
-  - 每个service（VIP+Port）会映射成一个虚拟服务（virtual service），VS是外界访问的入口
-  - 每个后端pod（endpoints）会注册成一个真实服务器（real server）挂在VS上
-- 连接跟踪：
-  - ipvs内部维护一个连接表（Connection Table）
-  - 首次请求选定目标RS
-  - 后续请求直接从连接表中取出目标pod，无需重新调度
-- 支持多种负载均衡调度算法：Round Robin（轮询/默认）、Least Connection（最少连接）、Weight Round Robin（加权轮询）、Destination Hashing（基于目标地址哈希）、Source Hashing（基于源地址哈希）
-
-### kube-proxy ipvs和iptables的异同点
-
-kube-proxy的iptables模式通过生成Netfilter规则链来转发service流量，而ipvs模式基于内核级的IP Virtual Server框架，实现连接跟踪和高性能的四层负载均衡
-
-相同点：
-
-- 都是用于service到pod的流量转发
-- 都会监听API server的service和endpoints的变更
-- 都由kube-proxy在每个Node节点本地运行
-- 都使用DNAT（目标地址转换）把service ip映射到pod ip
-- 都支持TCP、UDP，支持cluster IP、NodePort、LoadBalancer等类型
-- 都只工作在L4层（不能做HTTP等应用层的转发）
-
-不同点：
-
-- 实现方式：iptables使用Metfilter规则链和DNAT做转发，ipvs使用Linux IPVS框架，维护虚拟服务和连接表
-- 数据结构：iptables是链表结构，规则越多越慢，ipvs是基于哈希表，查找效率高
-- 转发机制：iptables每次匹配规则链+随机选择pod，ipvs第一次调度后进入连接表，后续直接查表
-- 负载均衡策略：iptables是固定的轮询，ipvs支持多种调度算法
-- 服务更新：iptanles更新全套iptables规则，规模大时较慢，ipvs仅更新差异部分，效率高
-- 性能：iptables规则多时性能下降，ipvs性能更高，适合大集群
-- 系统依赖：iptables是Linux默认支持，ipvs需要内核加载ip_vs模块
-- 可观测性：iptables查看规则`iptables -L -t nat`，ipvs查看规则`ipvsadm -Ln`
 
 ## Service/Ingress
 
