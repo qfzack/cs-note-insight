@@ -746,7 +746,111 @@ API server的作用：
     - Ingress Controller watch ingress资源，根据规则配置负载均衡
     - 网络/存储插件可能通过kubelet调用API server，间接同步信息
 
-### list/watch机制和informer是什么
+### list/watch机制是什么
+
+### informer是什么
+
+Informer的架构：
+
+1. Reflector：获取数据
+   - 负责与API server交互，执行list和watch操作，维护ResourceVersion，获取资源的初始状态和后续变化，短线后重连接
+   - Reflector保证事件不丢失、顺序正确
+2. DeltaFIFO：变更缓冲/语义压缩
+   - 按key聚合事件，并合并多次变更
+3. Store/Indexer：本地缓存
+   - 存储资源对象的最终状态，支持按key查询和索引查询
+4. SharedInformer：编排与一致性
+   - 串联Reflector、DeltaFIFO和Store，顺序应用Delta到cache，触发EventHandler
+5. EventHandler：事件处理
+   - 用户注册的回调函数，处理Add/Update/Delete事件
+6. WorkQueue：执行层
+   - 对事件进行异步处理，支持去重、限速、重试，保证Reconcile最终成功执行
+7. Reconciler：控制逻辑层
+   - 从cache获取对象，执行业务逻辑，确保实际状态与期望状态一致，通常是Controller的核心逻辑
+
+例如：一个Pod Update事件的处理流程：
+
+```
+1. Pod被修改
+2. apiserver生成watch event
+3. Reflector接收事件
+4. DeltaFIFO聚合到key
+5. SharedInformer Pop delta
+6. Store.Update(cache)
+7. OnUpdate handler被调用
+8. key入workqueue
+9. worker取key
+10. 从cache读Pod
+11. reconcile执行
+```
+
+SharedInformer和Resync：
+
+SharedInformer是指多个Controller共享同一个List/Watch实例和本地缓存的Informer，而不是每个Controller各自List/Watch资源
+
+Resync是把本地缓存中的对象，定期当成Update事件再交给Controller处理一次，即使对象没有变化，不是重新从API server拉取，其目的是：
+
+- 解决事件丢失的问题：如果某些事件由于网络问题、watch断链、API server重启导致丢失，Resync可以确保定期重新处理缓存中的所有对象，保证最终一致性
+- 不依赖事件驱动，而是定期重新检查当前状态，让Controller的逻辑更健壮
+- 作为兜底、低频、补偿性的处理机制，防止某些状态没有被及时处理
+
+### Informer怎么保证缓存一致性
+
+Informer不保证强一致性，而是通过List-Watch机制、ResourceVersion、有序事件处理、Resync来保证最终一致性的缓存，并且不会回退
+
+- List-Watch机制：
+  - Reflector启动时会执行`LIST /api/v1/pods`获取当前所有Pod，并且每个对象都有一个`matadata.ResourceVersion`，Informer会把这些对象和全局的ResourceVersion缓存起来
+  - 然后启动`WATCH /api/v1/pods?resourceVersion=<last_listed_version>`，监听从该版本开始的增量变化
+  - ResourceVersion是单调递增的，因此不会用旧事件覆盖新对象，保证了单调一致性
+  - 如果watch断连，Informer会尝试使用最近的ResourceVersion重新建立watch连接，如果版本过旧导致404错误，则会重新执行list整体刷新cache，再次建立watch
+- 有序事件处理：
+  - 缓存的写入是单线程、严格按照事件顺序执行的，因此不会出现乱序覆盖的问题
+- Resync机制：
+  - 定期把缓存中的对象当成Update事件重新交给Controller处理，防止由于事件丢失导致状态不一致
+
+非强一致性导致存在的问题：
+
+- 读取的Informer cache可能不是最新的状态，会比API server落后一些，但是最终会达到一致
+- 多个Informer之间的状态可能存在短暂差异，因为它们各自维护独立的cache
+
+### DeltaFIFO是什么
+
+DeltaFIFO是Informer内部使用的事件队列，保存的是对象的变化集合（Delta），DeltaFIFO关键的数据结构是：
+
+```go
+map[string]Deltas
+```
+
+- string是对象的key（`<namespace>/<name>`）
+- Deltas是该对象按时间顺序排列的Delta列表
+
+```go
+type Deltas []Delta
+
+type Delta struct {
+    Type  DeltaType  // Added/Updated/Deleted/Sync/Replaced
+    Object interface{}
+}
+```
+
+当Reflector往DeltaFIFO里添加事件时，如果key已经存在，则会把新的Delta追加到对应的Deltas列表中，在出队/Resync时，DeltaFIFO会把Deltas列表合并成一个最终的事件传递给Controller
+
+因此DeltaFIFO的主要作用是：
+
+- 事件去重：同一个对象的多次更新只保留最后一次，减少重复处理
+- 保证顺序：按照事件发生的顺序处理，确保状态一致性
+- 避免频繁Reconcile：减少对Controller的调用次数，提高效率
+
+### DeltaFIFO和WorkQueue的区别
+
+DeltaFIFO和WorkQueue都是Informer内部使用的队列机制，但它们的作用和实现方式不同：
+
+- DeltaFIFO：数据一致性队列
+  - 作用：在Informer内部对watch事件进行聚合和语义压缩，保证cache的一致性和顺序性
+  - 数据结构：基于map实现，key是对象的唯一标识，value是该对象的Delta列表
+- WorkQueue：业务执行可靠性队列
+  - 作用：在Controller层对key进行去重、限速和重试，保证Reconcile的最终成功
+  - 数据结构：基于队列实现，支持并发访问
 
 ### 如何减少API server的压力
 
