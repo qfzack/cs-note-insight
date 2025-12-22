@@ -702,6 +702,7 @@ informer是client-go的一个组件，实现了对list-watch的封装用于自�
 client-go是k8s官方提供的go语言SDK，用于与k8s apiserver通信的客户端库，是开发k8s应用的标准工具包
 
 client-go提供了完整的k8s交互能力：
+
 - clientset：访问所有k8s资源的客户端集合
 - informer：监听资源变化的高级封装
 - workqueue：处理事件的工作队列
@@ -748,9 +749,35 @@ API server的作用：
 
 ### list/watch机制是什么
 
-### informer是什么
+### Informer是什么
 
-Informer的架构：
+Informer是client-go的一个核心工具包，用于高效获取和监听集群资源对象的变化，k8s中与API server通信的主要组件都使用了Informer机制，其主要作用有：
+
+- 缓存资源对象
+  - Informer会通过list操作从API server拉取资源列表，并通过watch持续跟踪变化，将资源对象缓存在本地内存中，避免频繁访问API server，减轻API server压力
+- 事件通知机制
+  - 当资源发生增删改（Add/Delete/Update）时，Informer会触发回调（Handler），Controller可以根据事件来处理业务逻辑
+
+Informer的结构主要包括以下几个部分：
+
+1. Reflector
+   - 负责与API server交互，执行List-Watch机制，先使用List操作获取指定对象的全量数据，并存储到DeltaFIFO队列中
+   - 然后会建立watch连接，监听资源的增量变化事件放到DeltaFIFO，来保证本地缓存与API server的数据一致
+2. DeltaFIFO
+   - 充当Reflector和Store之间的缓冲区，存储从Reflector接收到的事件（Deltas），并记录事件的类型（Added/Updated/Deleted），保证事件的顺序性
+   - 还负责对去重和合并多次变更，防止不必要的处理
+3. Indexer/Store
+   - Informer的本地缓存，通常是一个线程安全的、基于内存的键值存储，存放了最新版本的资源对象
+   - Indexer提供了按标签、字段等多种索引查询能力，方便Controller快速查找需要的对象
+4. Informer Controller
+   - 负责Informer的生命周期管理，并驱动数据流，Controller会从DeltaFIFO中获取事件，更新Store缓存，并调用用户注册的EventHandler处理事件
+5. Resource Event Handlers
+   - 这是用户自定义业务逻辑的入口，包含用户实现的OnAdd、OnUpdate、OnDelete等回调函数，当事件发生时会调用这些函数
+   - 通常在OnAdd或OnUpdate中，会把事件对象放入WorkQueue，供下游的Controller进行处理
+
+### Informer是如何工作的
+
+Informer及下游Controller的工作流程如下：
 
 1. Reflector：获取数据
    - 负责与API server交互，执行list和watch操作，维护ResourceVersion，获取资源的初始状态和后续变化，短线后重连接
@@ -765,12 +792,12 @@ Informer的架构：
    - 用户注册的回调函数，处理Add/Update/Delete事件
 6. WorkQueue：执行层
    - 对事件进行异步处理，支持去重、限速、重试，保证Reconcile最终成功执行
-7. Reconciler：控制逻辑层
-   - 从cache获取对象，执行业务逻辑，确保实际状态与期望状态一致，通常是Controller的核心逻辑
+7. Controller Reconcile：控制逻辑层
+   - 从cache获取对象，执行业务逻辑，确保实际状态与期望状态一致，是Controller的核心逻辑
 
 例如：一个Pod Update事件的处理流程：
 
-```
+```text
 1. Pod被修改
 2. apiserver生成watch event
 3. Reflector接收事件
@@ -784,7 +811,7 @@ Informer的架构：
 11. reconcile执行
 ```
 
-SharedInformer和Resync：
+### SharedInformer和Resync
 
 SharedInformer是指多个Controller共享同一个List/Watch实例和本地缓存的Informer，而不是每个Controller各自List/Watch资源
 
@@ -978,7 +1005,7 @@ Raft协议中规定只有得到半数以上的投票才能成为Leader，当集�
 
 ### 简述ETCD适应的场景
 
-> https://juejin.cn/post/6844904162791014407?searchId=20250731212430E43FAA7ABA321B575AB8
+> <https://juejin.cn/post/6844904162791014407?searchId=20250731212430E43FAA7ABA321B575AB8>
 
 - 键值对存储：etcd本质是一个键值存储数据库
 - 服务注册与发现：基于Raft算法的etcd是一个强一致性、高可用的存储服务，可以用于注册服务和查找服务
@@ -1012,7 +1039,6 @@ etcd的性能问题通常体现在延迟高、写入慢、集群不稳定，排�
 - 检查watch和lease压力：过多的watch会导致CPU和内存占用增加，租约（lease）数量过多也会拖慢etcd
 - 检查满请求日志（关键）：`journalctl -u etcd | grep "took too long"`定位具体的慢写操作
 - 使用metrics+grafana监控：使用etcd暴露的prometheus指标可以监控请求速率、WAL写入延迟、DB fsync延迟、leader选举频率
-
 
 ## Kube-proxy
 
@@ -1297,6 +1323,7 @@ pod的重启策略是控制容器故障恢复行为的重要机制：
 
 K8s的pod是最小的调度单元，其中通常运行一个或者多个容器
 Pod的创建过程：
+
 1. 用户提交请求（kubectl或者rest api），请求包含pod中容器的镜像、资源限制、环境变量、存储卷、端口等pod配置
 2. apiserver接收到用户的请求后，先进行权限鉴定确保用户有权限创建pod，然后验证配置的正确性并补全默认的配置（一系列准准入控制器），最后将pod配置保存到etcd中，状态为pending
 3. scheduler通过list-watch监控到未调度的pod（pending且spec.nodeName为空），然后根据调度算法选择合适的node来运行pod,更新spec.nodeName后将pod信息写回apiserver，主要考虑的因素有：
@@ -1310,16 +1337,19 @@ Pod的创建过程：
    - 拉取容器镜像并启动容器（如果有init容器先启动init容器）
 5. 健康检查：通过就绪性探针（readiness probe）检查容器是否准备好接收流量，通过存活性探针（liveness probe）监控容器健康状态，根据探针结果更新pod状态
 6. 状态更新：整个过程kubelet持续向apiserver汇报pod状态：
-  - pending：pod已经调度但是尚未创建
-  - containerCreating：正在拉取镜像和创建容器
-  - running：所有容器都已成功启动
-  - ready：pod通过了就绪性检查，可以接收流量
+
+- pending：pod已经调度但是尚未创建
+- containerCreating：正在拉取镜像和创建容器
+- running：所有容器都已成功启动
+- ready：pod通过了就绪性检查，可以接收流量
+
 7. 服务发现和负载均衡：
    - kubeproxy更新iptables或IPVS规则
    - DNS记录会被更新以包含新的pod ip
    - pod成为server负载均衡的后端endpoint
 
 如果是创建deployment来创建pod，因为deplyment是更高级的抽象，因此会有些不同：
+
 - 单个pod创建没有controller参与，创建deploment时deployment controller会参与调度
 - 创建deployment会间接创建replicaset，然后replicaset再创建pod，所以与apiserver的交互次数增多
 
