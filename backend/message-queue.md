@@ -109,7 +109,24 @@
 
 # Kafka
 
-> https://javaguide.cn/high-performance/message-queue/kafka-questions-01.html#%E4%BB%80%E4%B9%88%E6%98%AF-producer%E3%80%81consumer%E3%80%81broker%E3%80%81topic%E3%80%81partition
+> <https://javaguide.cn/high-performance/message-queue/kafka-questions-01.html#%E4%BB%80%E4%B9%88%E6%98%AF-producer%E3%80%81consumer%E3%80%81broker%E3%80%81topic%E3%80%81partition>
+
+## 对Kafka的了解
+
+Kafka是一个高吞吐、分布式、持久化的消息队列/流处理平台，主要用于日志采集、消息传递、实时数据流处理等场景，其特点是：
+
+- 高吞吐、低延迟：Kafka每秒可以处理几十万条消息，延迟最低只有几毫秒，每个topic可以分多个partition来提高并发处理能力
+- 可扩展性：Kafka可以通过增加Broker节点来水平扩展，支持数千个节点和数百万个分区
+- 持久化存储：Kafka将消息持久化到磁盘，并支持数据备份防止丢失
+- 容错性：Kafka通过副本机制和自动故障转移来保证高可用性
+- 高并发：支持数千个客户端同时读写
+
+为什么Kafka这么快：
+
+- 顺序写入优化：Kafka将消息顺序写入磁盘，减少了磁盘寻址时间，比随机写入更高效
+- 批量处理技术：Kafka支持批量发送和消费消息，使得生产者在发送消息时可以等待直到有足够的数据再发送，消费者也可以一次拉取多条消息，减少网络开销和磁盘IO
+- 零拷贝技术：Kafka使用零拷贝技术，直接将数据从磁盘发送到网络，避免在用户空间和内核空间之间的多次数据拷贝，减少了CPU和内存的负载，提高了数据传输效率
+- 压缩技术：Kafka支持对消息进行压缩，不仅减少了网络传输的数据量，还提高了整体的吞吐量
 
 ## Kafka的架构
 
@@ -222,7 +239,7 @@ Kafka消息在发送的时候可以指定发送的topic、partition、key、data
 Broker丢失消息通常是因为单点故障或磁盘损坏，可以使用以下方式来保证消息可靠持久化：
 
 - `replication.factor>=3`：副本数量至少设置为3（即1个Leader和2个Follower），确保即使两个Broker宕机，消息仍然有一个副本存活
-- `min.insync.replicas=2`：与`acks=all`配合使用，表示至少有两个副本写入成功才返回确认
+- `min.insync.replicas>1`：与`acks=all`配合使用，表示至少有两个副本写入成功才返回确认
 - `unclean.leader.election.enable=false`：防止没有完全同步的副本被选为Leader，避免缺失的数据永久丢失
 
 **消费者确保消息处理完才提交：**
@@ -234,18 +251,128 @@ Broker丢失消息通常是因为单点故障或磁盘损坏，可以使用以�
 
 ## 如何保证消息不重复消费
 
+消息的重复消费主要发生在以下场景：
+
+- Consumer处理完消息后，在提交offset之前宕机，重启后会从上次提交的offset继续消费，导致重复消费
+- Rebalance过程中，Partition被重新分配给另一个Consumer，导致该Consumer未提交的消息被新的Consumer重新消费
+- 网络抖动或Broker故障导致Producer重试发送消息，导致相同的消息被写入多次
+
+保证消息不被重复消费的思路不是阻止重复发送，而是在消费端实现幂等性，实现方案有：
+
+1. 业务层实现幂等性是最重要的手段，常见的做法有：
+   - 建立数据库唯一索引（Unique Key），根据业务ID建立唯一索引，如果重复消费会导致唯一索引冲突，则可以忽略重复消费
+   - 利用Redis的原子操作（如`SETNX`）来实现幂等性，消费之前先查询Redis是否存在该业务ID，如果不存在则执行消费逻辑并存入Redis
+   - 状态机：维护一个状态机，记录每个业务ID的处理状态，只有当状态为未处理时才执行消费逻辑，并更新状态为已处理，如果状态为已处理则忽略重复消费
+2. 消费端合理配置可以减少重复消费的概率：
+   - 关闭自动提交offset：确保只有在消息处理成功后才手动提交offset，使用`commitSync()`而不是`commitAsync()`，确保offset提交成功
+   - 调整处理超时时间：如果Consumer单条消息处理时间太长，Kafka可能会认为Consumer宕机并触发Rebalance，Partition会被重新分配导致重复消费，可以通过调整`max.poll.interval.ms`参数来增加处理超时时间
+3. Kafka的幂等性和事务：
+   - 生产者幂等性：Kafka从0.11版本开始支持生产者幂等性，可以通过设置`enable.idempotence=true`来启用，确保相同的消息只会被写入一次
+   - 事务支持：Kafka也支持事务，主要用于Consume-Process-Produce模式，即从Kafka读，处理完后再写回Kafka，确保在事务中处理的消息要么全部成功，要么全部失败
+
 ## Kafka的重试机制
 
-消费失败会怎样？默认重试多少次？如何自定义重试机制
+Kafka的重试分为生产者和消费者：
+
+**生产者重试机制**：当生产者发送消息给Broker时，如果因为网络抖动或者Leader选举等原因导致发送失败，Kafka会自动重试，默认的重试次数很大（retries参数的默认值是Int的最大值），但是如果重试时间超过时间限制（`delivery.timeout.ms`，默认2分钟），则会放弃重试并返回发送失败
+
+**消费者重试机制**：如果在消费消息的时候发生了异常但是没有捕获：
+
+- 如果是自动提交offset（`enable.auto.commit=true`），则可能会丢失消息，因为offset会在后台定期提交，导致消息被认为已经消费成功
+- 如果是手动提交offset（`enable.auto.commit=false`），因为报错没有提交offset，Consumer会在下次拉取时重新消费这些消息，导致重复消费
+
+Kafka的消费逻辑是同步的，即Consumer在处理完一批消息之前不会拉取新的消息，并且原生Consumer默认重试次数为0，需要在代码里使用try-catch捕获异常并执行重试，因此如果处理一批消息时失败并且不断重试会导致：
+
+- 后续消息阻塞：因为Consumer在处理完当前批次之前不会拉取新的消息，导致后续消息无法被消费
+- 触发Rebalance：如果处理时间过长，Kafka可能会认为Consumer宕机并触发Rebalance，Partition会被重新分配给其他Consumer，导致重复消费
+
+**处理消费失败：**
+
+Kafka默认不提供失败重试机制，即只保证消息不丢失，但是消费者需要自己决定消息处理的结果，当把offset提交后，Kafka就认为消息已经被成功消费了
+
+常见的消费失败处理方式是在消息消费失败后，将消息发送到一个专门的`Topic_Retry`然后提交offset，Consumer继续消费下一个消息，然后有一个单独的重试Consumer去消费`Topic_Retry`，如果重试多次仍然失败，则将无法处理的消息发送到`Topic_DeadLetter`（死信队列）以便后续进一步分析、处理这些消息，这样可以避免阻塞主消费流程，同时也能保证消息不丢失
 
 ## 消息积压怎么办
 
----
+消息积压可能会导致数据处理延迟，甚至影响业务的正常运行，常见的解决方案有：
 
-如果有一个topic和一个group，topic有10个分区，消费线程数和分区数是什么关系
+- 增加消费者实例：通过增加更多的消费者实例来提高消费能力，减轻单个消费者的负载，要确保消费者组中消费者的数量不超过Partition的数量，因为一个Partition只能被一个消费者消费
+- 增加分区数量：通过增加Topic的分区数量来提高并发处理能力，更多的Partition可以让更多的消费者同时消费消息，在创建新的Partition后需要Rebalance消费者组
 
-消息中间件如何做到高可用
+在go的服务中，可以使用一个Consumer线程批量拉取消息，然后通过Channel分发给多个工作线程进行并行处理，从而提高整体的消费吞吐量，但是需要管理好offset的提交，确保只有在所有工作线程处理完消息后才提交offset
 
-Kafka和RabbitMQ的消息确认有什么区别
+# 常问问题
 
-Kafka和RabbitMQ的broker架构有什么区别
+## offset是什么
+
+在Kafka中，offset是消息在分区中的唯一序列号，当消息被发送到Kafka的某个partition时，Broker会为这条消息分配一个连续的、递增的64位整数作为offset，offset的特点是：
+
+- 唯一性：offset在单个分区内是唯一的，不同分区的offset是独立的
+- 不可变性：消息一旦写入分区，其offset就不会改变
+- 顺序性：offset是按消息写入的顺序递增的，消费者可以通过offset来确定消息的顺序
+
+offset在Kafka中的作用：
+
+1. Consumer启动后向组协调器group coordinator发送JoinGroup请求，加入指定的消费者组
+2. coordinator根据Consumer group的信息判断如果是第一次消费，则使用配置的`auto.offset.reset`策略（latest或earliest）来决定从哪里开始消费
+3. 如果不是第一次消费，则从缓存的`__consumer_offsets`topic中根据group、topic、partition作为key，直接定位到该key对应partition的offset（不同于consumer的顺序消费）
+4. coordinator把分配到的partition和对应的group offset返回给consumer
+5. consumer在内存里维护`currentPosition=groupOffset`，然后从currentPosition开始拉取消息进行处理
+6. currentPosition会随着消息的拉取和处理不断增加，当执行commit的时候，coordinator会把currentPosition提交到`__consumer_offsets`topic中，作为下次消费的起始位置
+
+`__consumer_offsets`是一个压缩日志主题，是key/value的结构：
+
+- key：`<group.id, topic, partition>`
+- value：`<offset, metadata, commit timestamp>`
+
+具体数据类似：
+
+```sql
+__consumer_offsets (partition 3)
+ ├── [groupA, topicX, p0] -> offset=120
+ ├── [groupB, topicY, p1] -> offset=888
+ ├── [groupA, topicX, p1] -> offset=300
+ └── [groupC, topicZ, p2] -> offset=90
+```
+
+## partition的数据如何持久化
+
+每个Topic可以有多个Partition，每个Partition对应为一个磁盘上的日志文件目录，为了防止单个日志文件过大，Kafka会将Partition进一步划分为多个Segment文件
+
+Kafka的消息持久化使用了操作系统的特性：
+
+- Page Cache（页缓存）：Kafka写入数据时，实际是先写入到操作系统的Page Cache中，由操作系统负责将数据异步刷新到磁盘
+- 顺序追加（Append-only）：数据总是追加到当前Segment的末尾，磁盘对于顺序写的性能非常高效，这是Kafka高吞吐量的关键原因之一
+- 零拷贝（Zero Copy）：在消息消费时，Kafka直接将数据从磁盘传输到网络，避免了用户空间和内核空间之间的多次数据拷贝，提高了数据传输效率
+
+持久化的可靠性保证：
+
+- ISR（In-Sync Replicas）：只有当Leader副本写入成功，并且副本集中的所有Follower副本都同步成功后，消息才会被认为是已提交
+- 刷盘配置：虽然Kafka默认依赖系统自动刷盘，但也可以通过配置`log.flush.interval.messages`和`log.flush.interval.ms`来控制刷盘的频率，确保数据持久化
+
+由于磁盘空间有限，Kafka不会永久保存数据，因此提供了两种数据删除策略：
+
+1. 基于时间/大小删除（Delete）：超过保留时长（默认7天）或超过分区大小阈值后，旧的Segment会被物理删除
+2. 日志压缩（Compact）：对于具有相同key的消息，只保留最新的一条，适用于状态更新类的消息
+
+## 为什么一个Partition只能被一个消费者消费
+
+在Kafka中，一个Partition只能由消费者组中的一个消费者来消费，如果由两个消费者负责同一个分区：
+
+- 两个消费同时读取分区的消息，会导致消息重复消费
+- 消息处理之后的offset提交会产生冲突，导致消息重复消费或丢失
+- 没法保证消息的顺序消费
+
+## 如果topic有10个分区，消费线程数和分区数是什么关系
+
+Topic下一个分区只能被消费者组中的一个消费者实例消费，但是一个消费者实例可以消费多个分区，因此消费线程数可以小于或等于分区数，但是不能大于分区数，如果消费者实例数大于分区数，则多余的消费者实例会处于空闲状态，无法消费消息浪费系统资源
+
+因此：分区数决定了同组消费者个数的上限
+
+## 消息中间件如何做到高可用
+
+单机的服务无法保证高可用，因此消息中间件通常采用分布式架构，通过多节点部署来实现高可用性
+
+Kafka的集群架构由多个broker组成，每个broker都是一个节点，当创建一个topic时，可以指定分区数和副本数，分区数决定了消息的并发处理能力，副本数决定了数据的冗余度和容灾能力
+
+topic的每个分区存放一部分数据，分别存在于不同的broker上，每个分区有一个leader和多个follower，生产者和消费者只和leader交互，follower负责从leader同步数据，当leader发生故障时，会从follower中选举出一个新的leader继续提供服务，从而保证消息的高可用性
