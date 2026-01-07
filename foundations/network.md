@@ -19,7 +19,7 @@
 - 网络层：处理数据包的路由和转发（IP协议）
 - 链路层：通过网络和物理介质传输数据帧
 
-![OSI](../resources/images/image.png)
+![OSI](../resources/images/OSI-model.png)
 
 ## 应用层
 
