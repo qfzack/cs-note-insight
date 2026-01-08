@@ -28,6 +28,7 @@ const fileStructure = {
         'insights/GMP.md',
         'insights/内存分配与垃圾回收.md',
         'insights/golang性能分析.md',
+        'insights/API-Server源码解读.md'
     ],
     docs: [
         'docs/interviews.md',
