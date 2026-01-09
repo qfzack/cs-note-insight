@@ -350,7 +350,7 @@ async function loadFileContent(file) {
         viewerContent.scrollTop = 0;
         
         processImages(file.path);
-        renderMermaidDiagrams();
+        await renderMermaidDiagrams();
         buildTOC();
         
     } catch (error) {
@@ -381,7 +381,7 @@ async function preloadFileContents(files) {
     await Promise.all(tasks);
 }
 // 渲染 Mermaid 图表
-function renderMermaidDiagrams() {
+async function renderMermaidDiagrams() {
     if (typeof mermaid === 'undefined') {
         console.warn('Mermaid library not loaded');
         return;
@@ -397,6 +397,8 @@ function renderMermaidDiagrams() {
     // 查找所有包含 mermaid 代码块的 <pre><code> 标签
     const mermaidBlocks = viewerContent.querySelectorAll('pre code.language-mermaid');
     
+    // 先收集所有需要渲染的 div
+    const mermaidDivs = [];
     mermaidBlocks.forEach((block, index) => {
         try {
             const code = block.textContent;
@@ -410,15 +412,22 @@ function renderMermaidDiagrams() {
             
             // 替换原有的 <pre> 标签
             pre.parentNode.replaceChild(mermaidDiv, pre);
-            
-            // 渲染图表
-            mermaid.run({
-                nodes: [mermaidDiv]
-            });
+            mermaidDivs.push(mermaidDiv);
         } catch (error) {
-            console.error('Error rendering Mermaid diagram:', error);
+            console.error('Error preparing Mermaid diagram:', error);
         }
     });
+    
+    // 统一渲染所有图表
+    if (mermaidDivs.length > 0) {
+        try {
+            await mermaid.run({
+                nodes: mermaidDivs
+            });
+        } catch (error) {
+            console.error('Error rendering Mermaid diagrams:', error);
+        }
+    }
 }
 
 // 处理图片路径

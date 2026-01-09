@@ -721,3 +721,20 @@ body {
     background: var(--text-secondary);
 }
 
+/* Mermaid 图表样式 */
+.viewer-content .mermaid {
+    display: block;
+    margin: 24px 0;
+    padding: 16px;
+    background-color: #f6f8fa;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    text-align: center;
+    overflow-x: auto;
+}
+
+.viewer-content .mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
