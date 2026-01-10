@@ -556,6 +556,80 @@ echo 100 > /sys/fs/cgroup/my_cgroup/pids.max
 
 5. 进程在容器内部执行，看到的PID是1（PID Namespace内），只能看到容器的rootfs文件系统，只能访问分配给他的网络、CPU、内存等资源，与宿主机其他进程完全隔离
 
+## 容器接口
+
+### Docker和Containerd
+
+Docker是一个完整的容器平台，提供了从镜像下载、镜像构建、容器运行到管理的全套工具和服务，为了实现标准化和解耦，Docker拆分为多个组件：
+
+- Docker Engine（dockerd）：提供REST API、用户认证、镜像构建（Buildkit）、网络管理等高级功能
+- Containerd：处于中间层，是一个工业级标准的容器运行时，负责镜像的分发、传递、管理容器的生命周期（创建、启动、停止、删除）
+- Runc：处于最底层，是一个符合OCI标准的轻量级工具，通过调用Linux内核API（如Namespace、Cgroups）来创建和运行容器
+
+因此Docker和Containerd的区别是：
+
+- Docker（dockerd）是一个面向开发者和运维者的产品，包含了镜像层级构建、复杂网络堆栈、Volumn存储管理等，是一套完整的容器解决方案
+- Containerd是一个面向机器的基础设施组件，剔除了Docker中非运行必须的功能（如镜像构建、Swarm集群模式），专为K8s等上层调度系统服务
+
+在K8s中使用Docker的调用路径是`kubelet -> Docker shim -> dockerd -> containerd -> Runc`，经过多次封装转换导致性能损耗大，而使用Containerd作为K8s的容器运行时，调用路径是`kubelet -> CRI插件 -> containerd -> Runc`，减少了中间层，直接通过grpc交互，性能更好
+
+### Dockershim是什么
+
+K8s早期是直接使用Docker的，后面为了规范化制定了CRI标准，但是当时Docker并不支持CRI，因此引入了一个适配层`Dockershim`，负责将kubelet的CRI指令转换为Docker API调用
+
+### containerd-shim是什么
+
+containerd-shim是每个容器的父进程，以守护进程运行在后台，其存在的目的是：
+
+- 解耦：允许containerd守护进程重启或升级，而不会导致容器停止
+- 维护IO：保持容器的标准输入输出打开，及时containerd挂掉，日志和流也不会丢失
+- 状态上报：负责容器进程的退出，并把状态码报给containerd
+
+shim进程的作用是：
+
+- 子进程管理：当容器内的`runC`完成初始化任务并退出后，容器的主进程会成为shim的子进程，shim负责处理容器进程退出后的清理工作，防止僵尸进程产生
+- 维持IO文件描述符：shim一直运行并持有容器的标准输入、输出（stdin/stdout/stderr），当执行`kubectl logs`本质是containerd去找这个shim进程获取日志数据
+- 提供通信接口：监听一个Unix Domain Socket，containerd通过这个Socket与shim通信，下达停止容器、获取容器状态等指令
+
+虽然containerd-shim是由containerd创建的，但在容器启动完后，containerd-shim的父进程（PPID）通常会变成1（systemd），目的是让shim进程独立于containerd守护进程运行，避免containerd重启时影响容器的生命周期
+
+### CRI、CNI和CSI是什么
+
+CRI、CNI和CSI是Kubernetes生态系统中的三个重要接口标准，本质是为了实现K8s的生态解耦而定义的标准
+
+- 容器运行时接口CRI（Container Runtime Interface）
+  - 定义了K8s如何控制容器的生命周期（拉取镜像、创建容器、启停容器）
+  - 主流的实现有containerd、CRI-O等
+  - K8s本身不负责运行容器，只是通过CRI协议发命令给容器运行时（如containerd）来管理容器
+- 容器网络接口CNI（Container Network Interface）
+  - 定义了如何给Pod分配IP、配置网卡、实现Pod之间的跨节点通信
+  - 主流的实现有Calico、Flannel、Cilium等
+  - 所有的网络配置都是在CNI插件里完成的，K8s只负责调用CNI插件来实现网络功能
+- 容器存储接口CSI（Container Storage Interface）
+  - 定义了K8s如何挂载外部存储卷（云盘、NAS、本地磁盘）到Pod中
+  - 主流实现是云厂商的存储插件
+  - CSI解决了存储设备和K8s核心代码的解耦问题，支持动态扩所容和快照
+
+### 如何实现CRI、CNI和CSI
+
+CRI是Kubelet与容器运行时之间的gRPC通信标准，实现CRI需要实现CRI proto中定义的两个服务：
+
+- RuntineService：处理`RunPodSanbox`（创建Pod环境）、`CreateContainer`、`StartContainer`、`StopContainer`等
+- ImageService：处理`PullImage`、`ListImage`、`RemoveImage`等
+
+CNI的实现和CRI、CSI不同，不是常驻的服务，而是一个可执行的二进制文件，Kubelet或容器运行时通过环境变量和标准输入（stdin）将JSON配置传递过来，从标准输出（stdout）获取结果，需要处理的核心逻辑：
+
+- ADD：当Pod创建，Kubelet调用时，需要创建虚拟网卡堆（Veth pair），将一段插入容器Network Namespace，然后给容器配置IP、路由
+- DEL：当Pod销毁时，释放IP地址，清理网卡
+
+CSI的实现涉及存储的生命周期管理（创建、挂载、格式化），需要实现三个gRPC服务：
+
+- Identity Service：告诉K8s插件的名称和功能
+- COntroller Service：在控制面运行，负责CreateVolumn（云端创建硬盘）、ControllerPublishVolumn（将硬盘挂载到指定服务器节点）
+- Node Service：在每个节点运行，负责NodeStageVolumn（格式化磁盘）、NodePublishVolumn（把磁盘mount到容器的具体目录）
+
+在实现CSI的时候，K8s内部逻辑非常复杂，涉及如何监控PVC、如何调度节点、如何失败重试等，因此K8s采用Sidecar模式，将通用的K8s逻辑做成几个标准的Sidecar容器，这样存储厂商可以专注开发CSI Driver与自己的硬件交互的逻辑，然后将这个Driver与Sidecar容器运行在同一个Pod里
+
 ## 常见面试题
 
 - [Docker Interview Questions](https://www.wecreateproblems.com/interview-questions/docker-interview-questions)
