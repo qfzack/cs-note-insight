@@ -1,0 +1,138 @@
+name: Monitor K8s Good First Issues
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-issues:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Fetch K8s Good First Issues
+        id: fetch-issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // 计算24小时前的时间（1天）
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            console.log(`查询 ${oneDayAgo.toISOString()} 之后创建的 issue`);
+            
+            // 查询 Kubernetes 仓库的 good first issue
+            const { data: allIssues } = await github.rest.issues.listForRepo({
+              owner: 'kubernetes',
+              repo: 'kubernetes',
+              labels: 'good first issue',
+              state: 'open',
+              sort: 'created',
+              direction: 'desc',
+              per_page: 50
+            });
+            
+            // 过滤最近24小时内创建的 issue
+            const issues = allIssues.filter(issue => {
+              const createdAt = new Date(issue.created_at);
+              return createdAt >= oneDayAgo;
+            });
+            
+            console.log(`找到 ${issues.length} 个最近 1 天内创建的适合新手的 issue`);
+            
+            if (issues.length === 0) {
+              console.log('最近 1 天内没有新的 good first issue');
+              return;
+            }
+            
+            // 生成 Markdown 报告
+            let report = `# Kubernetes Good First Issues 监控报告\n\n`;
+            report += `**更新时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n`;
+            report += `**时间范围**: 最近 1 天（24小时）\n\n`;
+            report += `**发现 ${issues.length} 个新的适合新手的 Issue**\n\n`;
+            report += `---\n\n`;
+            
+            issues.forEach((issue, index) => {
+              report += `## ${index + 1}. ${issue.title}\n\n`;
+              report += `- **Issue 编号**: #${issue.number}\n`;
+              report += `- **链接**: ${issue.html_url}\n`;
+              report += `- **创建时间**: ${new Date(issue.created_at).toLocaleString('zh-CN')}\n`;
+              report += `- **标签**: ${issue.labels.map(l => l.name).join(', ')}\n`;
+              report += `- **评论数**: ${issue.comments}\n\n`;
+              
+              // 显示部分描述
+              if (issue.body) {
+                const snippet = issue.body.substring(0, 200).replace(/\n/g, ' ');
+                report += `**描述预览**: ${snippet}${issue.body.length > 200 ? '...' : ''}\n\n`;
+              }
+              
+              report += `---\n\n`;
+            });
+            
+            // 保存报告
+            fs.writeFileSync('k8s-issues-report.md', report);
+            
+            // 输出摘要
+            core.summary
+              .addHeading('🎯 Kubernetes Good First Issues')
+              .addRaw(`发现 ${issues.length} 个适合新手的开放 Issue`)
+              .addTable([
+                [{data: 'Issue', header: true}, {data: '标题', header: true}, {data: '创建时间', header: true}],
+                ...issues.slice(0, 10).map(issue => [
+                  `<a href="${issue.html_url}">#${issue.number}</a>`,
+                  issue.title,
+                  new Date(issue.created_at).toLocaleDateString('zh-CN')
+                ])
+              ])
+              .write();
+            
+            return issues.length;
+      
+      - name: Commit and Push Report
+        if: steps.fetch-issues.outputs.result > 0
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          if [ -f "k8s-issues-report.md" ]; then
+            git add k8s-issues-report.md
+            git diff --staged --quiet || git commit -m "🤖 更新 K8s Good First Issues 报告"
+            git push
+          fi
+      
+      - name: Create Issue for New Opportunities
+        if: steps.fetch-issues.outputs.result > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('k8s-issues-report.md', 'utf8');
+            
+            // 创建带时间戳的通知 issue
+            const timestamp = new Date().toLocaleString('zh-CN', { 
+              timeZone: 'Asia/Shanghai',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            
+            // 创建新的通知 issue
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📢 K8s Good First Issues - ${timestamp}`,
+              body: report,
+              labels: ['k8s-monitoring', 'good-first-issue']
+            });
+            
+            console.log('已创建通知 issue');
