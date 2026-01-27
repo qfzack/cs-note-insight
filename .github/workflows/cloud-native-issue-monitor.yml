@@ -1,0 +1,272 @@
+name: Monitor Cloud Native Issues
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-issues:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Fetch Cloud Native Issues
+        id: fetch-issues
+        uses: actions/github-script@v7
+        env:
+          MONITOR_REPOS: ${{ vars.MONITOR_REPOS }}
+          MONITOR_LABELS: ${{ vars.MONITOR_LABELS }}
+          MONITOR_HOURS: ${{ vars.MONITOR_HOURS || '24' }}
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const monitorRepos = process.env.MONITOR_REPOS || 'kubernetes/kubernetes';
+            const monitorLabels = process.env.MONITOR_LABELS || 'good first issue';
+            const monitorHours = parseInt(process.env.MONITOR_HOURS) || 24;
+            
+            // 清理标签字符串：移除所有换行符、多余空格
+            const cleanedLabels = monitorLabels
+              .replace(/\r?\n/g, '')  // 移除换行符
+              .replace(/\s+/g, ' ')   // 多个空格合并为一个
+              .trim();                // 去除首尾空格
+            
+            // 将标签分割成数组
+            const labelArray = cleanedLabels.split(',').map(l => l.trim()).filter(l => l.length > 0);
+            
+            const repoList = monitorRepos
+              .replace(/\r?\n/g, '')  // 移除换行符
+              .split(',')
+              .map(r => r.trim())
+              .filter(r => r.length > 0);
+            
+            console.log(`监控仓库 (${repoList.length}个):`);
+            repoList.forEach(r => console.log(`  - ${r}`));
+            console.log(`\n监控标签 (${labelArray.length}个):`);
+            labelArray.forEach(l => console.log(`  - ${l}`));
+            console.log(`监控时间: ${monitorHours} 小时`);
+            
+            const timeAgo = new Date(Date.now() - monitorHours * 60 * 60 * 1000);
+            console.log(`查询 ${timeAgo.toISOString()} 之后创建的 issue\n`);
+            
+            // 存储所有仓库的 issues
+            const allRepoIssues = [];
+            
+            // 遍历每个仓库
+            for (const repoFullName of repoList) {
+              const [owner, repo] = repoFullName.split('/');
+              console.log(`\n正在查询 ${owner}/${repo}...`);
+              
+              try {
+                // 用 Set 存储 issue 编号，避免重复
+                const issueMap = new Map();
+                
+                // 对每个标签分别查询，实现 OR 关系
+                for (const label of labelArray) {
+                  console.log(`  查询标签 "${label}"...`);
+                  const issues = await github.paginate(github.rest.issues.listForRepo, {
+                    owner,
+                    repo,
+                    labels: label,
+                    state: 'open',
+                    since: timeAgo.toISOString(),
+                    sort: 'created',
+                    direction: 'desc',
+                    per_page: 100
+                  });
+                  
+                  // 合并结果，去重，并且一开始就过滤掉 Pull Requests
+                  issues.forEach(issue => {
+                    if (!issue.pull_request && !issueMap.has(issue.number)) {
+                      issueMap.set(issue.number, issue);
+                    }
+                  });
+                }
+                
+                const allIssues = Array.from(issueMap.values());
+                console.log(`  合并去重后共 ${allIssues.length} 个 issue`);
+                
+                // 再次验证时间范围
+                const recentIssues = allIssues.filter(issue => {
+                  const createdAt = new Date(issue.created_at);
+                  return createdAt >= timeAgo;
+                });
+                
+                console.log(`  确认有 ${recentIssues.length} 个最近 ${monitorHours} 小时内的 issue`);
+                
+                // 打印每个找到的 issue 的详细信息
+                if (recentIssues.length > 0) {
+                  console.log(`  详细列表:`);
+                  recentIssues.forEach((issue, idx) => {
+                    console.log(`    ${idx + 1}. #${issue.number} - ${issue.title}`);
+                    console.log(`       创建时间: ${new Date(issue.created_at).toISOString()}`);
+                    console.log(`       标签: ${issue.labels.map(l => l.name).join(', ')}`);
+                    console.log(`       链接: ${issue.html_url}`);
+                  });
+                  
+                  allRepoIssues.push({
+                    repo: repoFullName,
+                    issues: recentIssues
+                  });
+                } else {
+                  console.log(`  该仓库在指定时间范围内没有符合条件的 issue`);
+                }
+              } catch (error) {
+                console.error(`  查询 ${owner}/${repo} 失败: ${error.message}`);
+              }
+            }
+            
+            const totalIssues = allRepoIssues.reduce((sum, r) => sum + r.issues.length, 0);
+            console.log(`\n总共找到 ${totalIssues} 个 issue，来自 ${allRepoIssues.length} 个仓库`);
+            
+            if (totalIssues === 0) {
+              console.log(`最近 ${monitorHours} 小时内没有新的 issue`);
+              return 0;
+            }
+            
+            // 生成 Markdown 报告
+            let report = `# Cloud Native Issues 监控报告\n\n`;
+            report += `**更新时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n`;
+            report += `**监控仓库**: ${allRepoIssues.length} 个\n\n`;
+            report += `**监控标签**: ${labelArray.join(', ')}\n\n`;
+            report += `**时间范围**: 最近 ${monitorHours} 小时\n\n`;
+            report += `**发现 ${totalIssues} 个新的 Issue**\n\n`;
+            report += `---\n\n`;
+            
+            // 生成 HTML 邮件报告
+            let htmlReport = '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n  <style>\n';
+            htmlReport += '    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }\n';
+            htmlReport += '    .container { background: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n';
+            htmlReport += '    h1 { color: #0366d6; border-bottom: 3px solid #0366d6; padding-bottom: 10px; margin-top: 0; }\n';
+            htmlReport += '    .meta { background: #f6f8fa; padding: 15px; border-radius: 6px; margin: 20px 0; }\n';
+            htmlReport += '    .meta-item { margin: 8px 0; }\n';
+            htmlReport += '    .meta-label { font-weight: 600; color: #586069; }\n';
+            htmlReport += '    .repo-section { margin: 30px 0; border-left: 4px solid #0366d6; padding-left: 20px; }\n';
+            htmlReport += '    .repo-title { color: #0366d6; font-size: 1.3em; margin-bottom: 15px; }\n';
+            htmlReport += '    .issue-card { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 15px; margin: 15px 0; }\n';
+            htmlReport += '    .issue-title { font-size: 1.1em; font-weight: 600; color: #24292e; margin-bottom: 10px; }\n';
+            htmlReport += '    .issue-meta { font-size: 0.9em; color: #586069; margin: 5px 0; }\n';
+            htmlReport += '    .issue-link { color: #0366d6; text-decoration: none; font-weight: 500; }\n';
+            htmlReport += '    .issue-link:hover { text-decoration: underline; }\n';
+            htmlReport += '    .label { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.85em; margin: 2px; background: #dfe2e5; color: #24292e; }\n';
+            htmlReport += '    .description { color: #586069; margin-top: 10px; font-size: 0.95em; line-height: 1.5; }\n';
+            htmlReport += '    .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #586069; font-size: 0.9em; }\n';
+            htmlReport += '  </style>\n</head>\n<body>\n  <div class="container">\n    <h1>🎯 Cloud Native Issues 监控报告</h1>\n    \n    <div class="meta">\n';
+            htmlReport += `      <div class="meta-item"><span class="meta-label">更新时间:</span> ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</div>\n`;
+            htmlReport += `      <div class="meta-item"><span class="meta-label">监控仓库:</span> ${allRepoIssues.length} 个</div>\n`;
+            htmlReport += `      <div class="meta-item"><span class="meta-label">监控标签:</span> ${labelArray.join(', ')}</div>\n`;
+            htmlReport += `      <div class="meta-item"><span class="meta-label">时间范围:</span> 最近 ${monitorHours} 小时</div>\n`;
+            htmlReport += `      <div class="meta-item"><span class="meta-label">发现 Issue:</span> <strong>${totalIssues} 个</strong></div>\n`;
+            htmlReport += '    </div>\n';
+            
+            // 按仓库分组显示
+            allRepoIssues.forEach(repoData => {
+              report += `## 📦 ${repoData.repo}\n\n`;
+              report += `发现 ${repoData.issues.length} 个新 Issue\n\n`;
+              
+              htmlReport += '    <div class="repo-section">\n';
+              htmlReport += `      <h2 class="repo-title">📦 ${repoData.repo}</h2>\n`;
+              
+              repoData.issues.forEach((issue, index) => {
+                // Markdown 版本
+                report += `### ${index + 1}. ${issue.title}\n\n`;
+                report += `- **Issue 编号**: #${issue.number}\n`;
+                report += `- **链接**: ${issue.html_url}\n`;
+                report += `- **创建时间**: ${new Date(issue.created_at).toLocaleString('zh-CN')}\n`;
+                report += `- **标签**: ${issue.labels.map(l => l.name).join(', ')}\n`;
+                report += `- **评论数**: ${issue.comments}\n\n`;
+                
+                // HTML 版本
+                htmlReport += '      <div class="issue-card">\n';
+                htmlReport += `        <div class="issue-title">${index + 1}. ${issue.title}</div>\n`;
+                htmlReport += '        <div class="issue-meta">\n';
+                htmlReport += `          <strong>#${issue.number}</strong> | \n`;
+                htmlReport += `          <a href="${issue.html_url}" class="issue-link" target="_blank">查看详情 →</a>\n`;
+                htmlReport += '        </div>\n';
+                htmlReport += '        <div class="issue-meta">\n';
+                htmlReport += `          📅 ${new Date(issue.created_at).toLocaleString('zh-CN')} | \n`;
+                htmlReport += `          💬 ${issue.comments} 条评论\n`;
+                htmlReport += '        </div>\n';
+                htmlReport += '        <div class="issue-meta">\n';
+                htmlReport += `          ${issue.labels.map(l => '<span class="label">' + l.name + '</span>').join(' ')}\n`;
+                htmlReport += '        </div>\n';
+                
+                // 显示部分描述
+                if (issue.body) {
+                  const snippet = issue.body.substring(0, 200).replace(/\n/g, ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  report += `**描述预览**: ${snippet}${issue.body.length > 200 ? '...' : ''}\n\n`;
+                }
+                
+                report += `---\n\n`;
+                htmlReport += '      </div>\n';
+              });
+              
+              report += `\n`;
+              htmlReport += '    </div>\n';
+            });
+            
+            htmlReport += '    <div class="footer">\n';
+            htmlReport += '      <p>此邮件由 GitHub Actions 自动生成</p>\n';
+            htmlReport += '    </div>\n';
+            htmlReport += '  </div>\n';
+            htmlReport += '</body>\n';
+            htmlReport += '</html>\n';
+            
+            // 保存报告
+            fs.writeFileSync('k8s-issues-report.md', report);
+            fs.writeFileSync('k8s-issues-report.html', htmlReport);
+            
+            // 输出摘要
+            core.summary
+              .addHeading('🎯 Cloud Native Issues 监控')
+              .addRaw(`监控仓库: ${allRepoIssues.length} 个`)
+              .addRaw(`<br>监控标签: ${labelArray.join(', ')}`)
+              .addRaw(`<br>发现 ${totalIssues} 个新的开放 Issue`);
+            
+            // 为每个仓库添加表格
+            allRepoIssues.forEach(repoData => {
+              if (repoData.issues.length > 0) {
+                core.summary
+                  .addHeading(`📦 ${repoData.repo}`, 3)
+                  .addTable([
+                    [{data: 'Issue', header: true}, {data: '标题', header: true}, {data: '创建时间', header: true}],
+                    ...repoData.issues.slice(0, 5).map(issue => [
+                      `<a href="${issue.html_url}">#${issue.number}</a>`,
+                      issue.title,
+                      new Date(issue.created_at).toLocaleDateString('zh-CN')
+                    ])
+                  ]);
+              }
+            });
+            
+            core.summary.write();
+            
+            return totalIssues;
+      
+      - name: Send Email Notification
+        if: steps.fetch-issues.outputs.result > 0
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 465
+          secure: true
+          username: ${{ vars.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: 🎯 Cloud Native Issues 监控报告
+          to: ${{ vars.EMAIL_TO }}
+          from: ${{ vars.EMAIL_USERNAME }}
+          html_body: file://k8s-issues-report.html
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f k8s-issues-report.md k8s-issues-report.html
+          echo "清理完成"
