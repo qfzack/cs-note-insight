@@ -1278,7 +1278,7 @@ go的内存泄漏是指本来不再被使用的对象，仍然被程序持有引
 
 ### 性能分析工具
 
-![golang性能分析](../insights/golang性能分析.md)
+[golang性能分析](../insights/golang性能分析.md)
 
 1. **pprof**是go内置的net/http/pprof包提供的性能分析工具，可以在程序运行时采集内存、CPU、锁、阻塞等信息，并提供分析与可视化的结果
    - 可用于分析CPU使用情况、heap内存分配情况、Alloc分配热点、goroutine泄漏、阻塞分析、锁竞争等
@@ -1411,10 +1411,230 @@ func BenchmarkXxx(b *testing.B)
 
 <https://golangstar.cn/go_series/go_advanced/goroutine_pool.html>
 
+协程池是一种用于限制和复用goroutine的资源管理技术，目的在于：
+
+- 限制并发数量：防止突发流量导致系统资源耗尽
+- 减小GC压力：频繁创建和销毁大量goroutine会增加GC负担，复用协程可以降低对象分配频率、
+- 控制生命周期：方便统一管理任务的开始、结束、超时和错误处理
+
+协程池的设计遵循生产者-消费者模型：
+
+- 任务队列（Task Queue）：存放等待处理的任务
+- 工作协程（Worker Goroutines）：预先开启固定数量的goroutine，不断从队列中取任务执行
+- 调度管理：负责任务的分发、Worker的扩缩容以及优雅退出
+
+> 实现一个协程池
+
 ## 反射
+
+### 反射原理
 
 <https://golangstar.cn/go_series/go_advanced/reflect.html>
 
-## 范型
+反射是程序在运行时（Runtime）检查、访问和修改其自身结构和行为的能力，因为go的变量类型通常在编译时就确定了，有些场景不知道传入的参数类型（比如序列化/反序列化和ORM框架），Go语言提供了`reflect`包来实现反射功能来获取变量内部信息
+
+反射的核心方法：
+
+- `reflect.TypeOf(v interface{}) Type`：获取变量v的类型信息（如int、string、struct等）
+- `reflect.ValueOf(v interface{}) Value`：获取变量v的值信息（如42、"hello"、struct实例等）
+
+反射的代价：
+
+- 反射涉及大量的内存分配和类型检查，通常比直接的代码操作慢
+- 反射会绕过编译期的类型检查，可能导致运行时错误，如设置int类型的字段为string类型的值
+- 反射代码通常比普通代码更复杂和难以维护
+
+### 反射常用方法
+
+- reflect.TypeOf()  获取某个对象的反射类型实现（reflect.Type）
+- reflect.ValueOf() 获取某个对象的反射值对象（reflect.Value）
+- reflect.New() 创建一个新的反射值对象，类型为传入的reflect.Type
+
+**reflect.Type接口方法：**
+
+- Type实例通用方法
+
+| 方法     | 说明                 |
+| -------- | -------------------- |
+| Kind()   | 返回底层枚举种类     |
+| Name()   | 返回类型的名称       |
+| String() | 返回类型的字符串表示 |
+| Size()   | 返回类型的字节大小   |
+| Align()  | 返回类型的对齐值     |
+
+- Type为结构体时的方法：
+
+| 方法              | 说明                                                      |
+| ----------------- | --------------------------------------------------------- |
+| NumField()        | 返回结构体中字段总数                                      |
+| Field(i)          | 返回第i个字段的信息（reflect.StructField）                |
+| FieldByName(name) | 根据字段名返回对应字段的信息（reflect.StructField）       |
+| FieldByIndex(idx) | 根据字段索引切片返回对应字段的信息（reflect.StructField） |
+
+- 其他方法
+
+| 方法        | 说明                                  |
+| ----------- | ------------------------------------- |
+| Elem()      | 获取指向元素或容器内部元素的类型      |
+| Key()       | 返回map类型的键类型                   |
+| Len()       | 返回数组定义的长度                    |
+| NumIn()     | 返回函数的入参个数                    |
+| In(i)       | 返回函数的第i个入参（reflect.Type）   |
+| NumOut()    | 返回函数的返回值个数                  |
+| Out(i)      | 返回函数的第i个返回值（reflect.Type） |
+| NumMethod() | 返回类型的导出方法个数                |
+| Method(i)   | 返回类型的第i个方法的信息             |
+
+**reflect.Value结构体方法：**
+
+| 方法/属性               | 说明                                                    |
+| ----------------------- | ------------------------------------------------------- |
+| NumField()              | 返回结构体中字段总数                                    |
+| Field(i)                | 返回第i个字段的值（reflect.Value）                      |
+| FieldByName(name)       | 根据字段名返回对应字段的值（reflect.Value）             |
+| Elem()                  | 如果Value是指针，返回指向的对象；如果是接口，返回底层值 |
+| Len()/Cap()             | 返回容器的长度/容量                                     |
+| Index(i)                | 返回容器中第i个元素的reflect.Value对象                  |
+| MapKeys()               | 返回map的每个键reflect.Value对象组成的切片              |
+| MapRange()              | 返回一个迭代器，用于遍历map的键值对                     |
+| MapIndex(key)           | 从map中获取指定键对应的值                               |
+| SetMapIndex(key, value) | 设置map中指定键对应的值                                 |
+| Method(i)               | 返回一个代表该方法的reflect.Value对象，Func类型         |
+| MethodByName(name)      | 根据方法名返回对应方法                                  |
+| Call(args []Value)      | 调用方法，传入参数`[]Value`切片，返回结果`[]Value`切片  |
+| SetInt(x int64)         | 设置有符号整数值                                        |
+| SetUnit(x uint64)       | 设置无符号整数值                                        |
+| SetString(s string)     | 设置字符串值                                            |
+| SetBool(b bool)         | 设置布尔值                                              |
+| Set(x Value)            | 将另一个reflect.Value的值赋给当前Value                  |
+
+**reflect转换关系**
+
+- Value -> Type: 通过`Value.Type()`获取Value的类型信息
+- Value -> Interface: 通过`Value.Interface()`获取Value的底层值
+- Type -> Value: 通过`reflect.New(Type)`创建一个新的Value实例
+
+### 使用反射创建对象
+
+```go
+func main() {
+    // 1. 拿到类型 (图纸)
+    // 即使没有实例，也可以通过这种方式拿到 Type
+    userType := reflect.TypeOf(User{})
+
+    // 2. 创建对象 (等同于执行 p := new(User))
+    // 注意：v 的 Kind 是 Ptr (指针)
+     v := reflect.New(userType)
+
+    // 3. 获取指针指向的实体，以便赋值
+    instance := v.Elem()
+
+    // 4. 给字段赋值
+    instance.FieldByName("Name").SetString("Gemini")
+    instance.FieldByName("Age").SetInt(1)
+
+    // 5. 转换回普通变量使用
+    // v.Interface() 得到的是 *User 类型
+    newUser := v.Interface().(*User)
+
+    fmt.Printf("动态创建的对象: %+v\n", newUser) // 输出: &{Name:Gemini Age:1}
+}
+```
+
+对于集合类型，有专门的方法`reflect.MakeSlice`、`reflect.MakeMap`、`reflect.MakeChan`来创建对应的反射值对象
+
+## 泛型
+
+### 泛型定义
 
 <https://golangstar.cn/go_series/go_advanced/generics.html>
+
+泛型允许在编写函数、结构体和接口的时候，不用预先指定具体的类型，而是使用类型参数，等实际调用的时候再确定具体类型，作用是为了减少代码重复、保证类型安全、提升性能（相比使用interface{}）
+
+- 类型参数：在函数名或类型名后的`[]`中定义的占位符类型，可以有多个类型参数
+- 类型约束：规定这些参数必须满足哪些条件
+- 类型实例化：在调用时传入具体类型，生成对应的函数或类型实例
+
+泛型函数：
+
+```go
+// 定义一个泛型函数，T是类型参数
+func Reverse[T any](s []T) []T {
+    for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+        s[i], s[j] = s[j], s[i]
+    }
+    return s
+}
+```
+
+泛型类型：
+
+```go
+type Box[T any] struct {
+    Content T
+}
+```
+
+### 泛型约束
+
+泛型约束是为了告诉编译器泛型函数或类型，只接受满足指定条件的具体类型，以此限制类型参数的范围，保证类型安全
+
+**预定义约束**
+
+- `any`：表示任意类型，相当于`interface{}`
+- `comparable`：表示可以使用`==`和`!=`进行比较的类型，如基本类型、指针、接口等
+
+```go
+// 使用comparable约束，否则使用any传入map等类型会报错
+func FindIndex[T comparable](slice []T, target T) int {
+    for i, v := range slice {
+        if v == target {
+            return i
+        }
+    }
+    return -1
+}
+```
+
+**自定义约束**
+
+约束本质是一个接口类型，可以定义自己的方法或嵌入其他接口/类型来实现更复杂的约束
+
+- 使用`|`定义联合类型约束
+
+```go
+// 定义一个名为 Number 的约束，只允许 int 或 float64
+type Number interface {
+    int | int64 | float64
+}
+
+func Add[T Number](a, b T) T {
+    return a + b
+}
+```
+
+- 使用`~`表示类型的底层类型
+
+```go
+type Float interface {
+    ~float32 | ~float64
+}
+
+type MyFloat float64
+// 这里的 MyFloat 也可以使用受 Float 约束的函数
+
+func Sqrt[T Float](x T) T {
+    return x
+}
+```
+
+- 组合约束
+
+```go
+type StringerNumber interface {
+    ~int | ~float64 // 必须是这些底层类型
+    String() string // 并且必须实现 String 方法
+}
+```
+
+另外标准库中的`golang.org/x/exp/constraints`包提供了一些常用的约束类型，如`constraints.Ordered`表示支持比较操作的类型，`constraints.Integer`表示整数类型，`constraints.Float`表示浮点数类型等，可以直接使用这些预定义的约束来简化代码
