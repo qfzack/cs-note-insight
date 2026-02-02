@@ -490,7 +490,7 @@ type bmap struct {
   - 当下面任一条件满足，会触发map的扩容：
     - 元素数量增长太多（负载因子超过6.5，即map元素数量超过6.5*桶数量，一个桶8个k-v）触发增量扩容，桶数量翻倍，重新哈希分布所有键值对
     - 溢出桶太多（>=2^min(B,15)）触发等量扩容，桶数量不变，重新整理数据，减少溢出桶
-  - 扩容都是渐进式的，扩容期间读操作需要检查新旧两个桶，写操作触发渐进式迁移
+  - 扩容都是渐进式的，扩容期间读操作需要检查新旧两个桶（先看oldbuckets），写操作触发渐进式迁移
 - 因为map的哈希表结构设计动态分配、扩容、溢出桶、迁移等复杂操作，并且这些操作没有加锁，因此并发写时会造成结构不一致，最终导致运行时崩溃（panic）
 
 #### 使用map需要注意的点，是否并发安全
@@ -515,7 +515,7 @@ type bmap struct {
 #### map为nil和map为空的区别是什么（初始状态和内存占用，对增删改查的影响）
 
 - map初始化的区别
-  - 使用var声明一个map的值为nil，占用0字节（仅仅是一个nil指针），没有分配任何底层数据结构，不能直接使用
+  - 使用var声明一个map的值为nil，占用8字节（仅仅是一个nil指针），没有分配任何底层数据结构，不能直接使用
   - 使用make或:=创建的是一个空map，但是分配了hmap结构体（约48字节），并初始化bucket数组，可以直接使用
 - 初始化过程（使用make创建长度为0的map）
   - 创建hmap结构体，但是buckets的值为nil
@@ -623,8 +623,9 @@ type Map struct {
   - 先从read查找，如果命中则返回（读操作大多数命中read）
   - 如果没命中则加锁访问dirty，如果命中则miss计数，miss过多则升级dirty->read（将dirty map替换成新的read）
 - 写流程：
-  - 加锁（mu.Lock()），修改dirty（写操作解锁，但是不会影响只读路径）
-  - 如果key原本只在read中命中，会将其标记“已删除”（value有更新），然后复制到dirty
+  - 如果key在read中，则更新read（对应的entry与dirty共享），read是存放在atomic.Value可以原子操作，而dirty是原生map
+  - 否则如果key在dirty中，则更新dirty
+  - 如果数据不存在则插入到dirty
 
 ### interface
 
@@ -635,13 +636,14 @@ type Map struct {
 
 #### 值接收者和指针接收者的区别，分别在什么时候使用
 
-- go中接受者（receiver）是方法定义中的一个重要概念，是方法签名中类型名称前面的参数，指定了哪个类型可以调用这个方法
-- 值接收者
+go中接受者（receiver）是方法定义中的一个重要概念，是方法签名中方法名前面的参数，指定了哪个类型可以调用这个方法
+
+- **值接收者** `(t T)`
   - 方法接收的是类型值的副本
   - 方法内部对接受者的修改不会影响原始值
   - 调用时会发生值拷贝
   - 适合只读操作或不需要修改原始数据的场景
-- 指针接收者
+- **指针接收者** `(t *T)`
   - 方法接收的是类型值的指针
   - 方法内部对接收者的修改会影响原始值
   - 避免了值拷贝，性能更好
@@ -649,9 +651,26 @@ type Map struct {
 - 值类型接收者可以调用指针类型接收者的方法，go会自动取地址
 - 指针类型接收者可以调用值类型接收者的方法，go会自动解引用
 
-> 但是对于接口类型赋值会有问题：指针类型接收者可以使用值接收者的方法，反之不行，即：
-> 值类型T方法的方法集，只包含值接收者的方法
-> 指针类型*T的方法集，包含值接收者和指针接收者的所有方法
+但是对于接口类型赋值会有问题：**指针类型接收者可以使用值接收者的方法**，反之不行，即：
+
+- 值类型T方法的方法集，只包含值接收者的方法
+- 指针类型*T的方法集，包含值接收者和指针接收者的所有方法
+
+指针接受者实现的方法，会认为值接受者没有实现：
+
+```go
+type Scorer interface {
+    Add(int)
+}
+
+func main() {
+    // 假设 Add 是用指针接收者 (*Player) 实现的
+    var p Player
+    
+    var s1 Scorer = &p // 成功：指针类型实现了接口
+    var s2 Scorer = p  // 报错：值类型 Player 没有实现接口（因为它无法被 Add 修改）
+}
+```
 
 #### iface和eface的区别是什么
 
@@ -817,23 +836,28 @@ func main() {
 - channel会先尝试走fast-path：
   - 是否有可用缓冲
   - 是否有等待的goroutine
-  - 是否数据可以直接交换
+  - 是否数据可以直接交换（hand off直接拷贝到对方的栈中）
 - fast-path不满足才会进入slow-path
 
 #### nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎么样
 
-- channel为nil（`var ch chan int`）：
-  - 发送数据会永远阻塞
-  - 接收数据会永远阻塞
-  - 关闭会导致panic
-- 已经关闭的channel：
-  - 发送会导致panic
-  - 接收会立即返回零值和ok=false
-  - 再次关闭会panic
-- 有数据的channel：
-  - 发送成功或者阻塞
-  - 读取成功或者阻塞
-  - 可以正常关闭
+| Channel状态  | 发送操作   | 接收操作                          | 关闭操作 |
+|--------------|------------|---------------------------------|----------|
+| nil          | 阻塞       | 阻塞                            | panic    |
+| 已关闭       | panic      | 零值，ok=false，或者数据，ok=false | panic    |
+| 有数据       | 成功或阻塞 | 成功或阻塞                         | 正常关闭 |
+
+#### hand off机制是什么
+
+在channel中当一个goroutine尝试操作channel时，发现有另一个goroutine在阻塞队列中，就回立即发生hand off（直接传递数据），而不是把数据放入缓冲区
+
+**发送时hand off**：发生在缓冲区为空（才可能有等待的接收者）或无缓冲时，发送者发现recvq非空，则直接把数据拷贝到接收者的栈上，标记接收者为可执行状态，等待调度器执行
+
+**接收时hand off**：发生在缓冲区满（才可能有等待的发送者）或无缓冲时，接收者发现sendq非空，则直接从发送者的栈上拷贝数据，标记发送者为可执行状态，等待调度器执行
+
+而其他情况recvq和sendq都是为空的，不会发生hand off
+
+hand off机制可以减少数据在缓冲区的拷贝，从而减少上下文的切换开销，保持goroutine的高效运行
 
 #### 向channel发送数据和读取数据的流程是什么
 
@@ -871,11 +895,26 @@ func main() {
 
 #### select的原理和一些特性（项目中怎么使用的select）
 
-- select是golang提供的一种多路复用机制，用于同时监听多个channel的读写操作，类似于switch，是专门为channel设计的，可以使用select同时监听多个channel的读写操作，一个某个操作可以继续执行，就会执行响应的分支
-- select的规则：
-  - 并发监听多个channel，select会阻塞直到某个case准备好，如果有多个case可以执行，会随机选择一个
-  - 如果所有的case都没准备好，但存在default，会立即执行default，可以用来实现非阻塞的操作
-  - 添加一个case使用time.After可以实现超时控制
+select是golang提供的一种多路复用机制，用于同时监听多个channel的读写操作，类似于switch，是专门为channel设计的，可以使用select同时监听多个channel的读写操作，一个某个操作可以继续执行，就会执行响应的分支
+
+select的规则：
+
+- 并发监听多个channel，select会阻塞直到某个case准备好，如果有多个case可以执行，会随机选择一个
+- 如果所有的case都没准备好，但存在default，会立即执行default，可以用来实现非阻塞的操作
+- 添加一个case使用time.After可以实现超时控制
+
+```go
+select {
+case msg1 := <-ch1:
+    // 处理从ch1接收到的数据
+case ch2 <- msg2:
+    // 发送msg2到ch2
+case <-time.After(2 * time.Second):
+    // 超时处理
+default:
+    // 非阻塞操作，会立即执行
+}
+```
 
 #### 有缓存的channel和无缓存的channel
 
@@ -925,6 +964,12 @@ goroutine的创建和销毁开销很小，适合高并发场景
 - 避免闭包的陷阱：在for-range中启动goroutine需要注意变量捕获
 - 使用select处理多个channel，避免goroutine阻塞
 
+### 使用goroutine时如何防止内存泄漏
+
+1. 注意channel的使用和死锁情况，防止goroutine阻塞
+2. 使用context.Context控制goroutine的生命周期
+3. 防止父协程结束子协程阻塞，使用sync.WaitGroup等待子协程完成
+
 ### sync包
 
 - sync.WaitGroup
@@ -932,13 +977,65 @@ goroutine的创建和销毁开销很小，适合高并发场景
   - 通过Add、Done和Wait方法来管理
   - 适用于并发任务的同步
 
+```go
+func main() {
+  var wg sync.WaitGroup
+  urls := []string{"http://google.com", "http://github.com"}
+
+  for _, url := range urls {
+      wg.Add(1) // 进场：增加计数
+      go func(u string) {
+          defer wg.Done() // 出场：减少计数
+          fmt.Println("正在下载:", u)
+      }(url)
+  }
+
+  wg.Wait() // 直到所有计数归零才放行
+  fmt.Println("所有下载完成")
+}
+```
+
 - sync.Mutex
 - sync.RWMutex
-- sync.Once
-- sync.Lock
-- sync.Map
-- sync.Cond
-- sync.Pool
+- sync.Lock：互斥锁，保护临界区
+
+```go
+type SafeCounter struct {
+    mu    sync.RWMutex
+    stats map[string]int
+}
+
+func (sc *SafeCounter) Get(key string) int {
+    sc.mu.RLock()
+    defer sc.mu.RUnlock()
+    return sc.stats[key]
+}
+
+func (sc *SafeCounter) Increment(key string) {
+    sc.mu.Lock()
+    defer sc.mu.Unlock()
+    sc.stats[key]++
+}
+```
+
+- sync.Once：某些操作全局只做一次
+- sync.Map：并发安全的map
+- sync.Cond：条件变量
+- sync.Pool：对象池，复用临时对象，减少GC压力
+
+```go
+var bufPool = sync.Pool{
+    New: func() any {
+        return make([]byte, 1024) // 定义如何创建一个新对象
+    },
+}
+
+func process() {
+    buf := bufPool.Get().([]byte) // 从池子里拿（如果没有会自动调 New）
+    defer bufPool.Put(buf)        // 用完还回去
+    // 使用 buf 进行操作...
+}
+```
 
 - sync/atomic
   - 提供原子操作，适用于无锁编程
@@ -947,33 +1044,122 @@ goroutine的创建和销毁开销很小，适合高并发场景
   - 提供原子加载和存储任意类型的值
   - 适用于需要频繁读写共享数据的场景
 
+```go
+import (
+    "fmt"
+    "sync"
+    "sync/atomic"
+)
+
+func main() {
+    // 1. 声明一个原子类型（推荐方式）
+    var counter atomic.Int64 
+    var wg sync.WaitGroup
+
+    for i := 0; i < 1000; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            // 2. 原子自增 1
+            counter.Add(1) 
+        }()
+    }
+
+    wg.Wait()
+    // 3. 原子读取
+    fmt.Println("最终计数:", counter.Load())
+}
+```
+
 ### context
 
-- go中context是用来在多个goroutine之间传递取消信号、超时控制、截止时间和请求范围内的共享数据的一种标准机制
-- 多个goroutine处理同一个请求时，就需要：
-  - 统一取消所有关联的goroutine（如请求超时或者用户取消）
-  - 传递截至时间（deadline）
-  - 传递请求相关的元数据（如身份认证信息、Trace ID）
-  - 避免goroutine泄露（内存泄漏）
-- Context是一个interface，包含以下方法：
-  - `Deadline() (deadline time.Time, ok bool)`返回截至时间
-  - `Done() <-chan struct{}`返回一个channel，关闭代表取消信号
-  - `Err() error`取消原因
-  - `Value(key interface{}) interface{}`传递的键值对数据
+context是用来在goroutine层级之间传递**信号**（取消信号、超时控制）和**元数据**（TraceID、UserID）
 
-- 使用场景
-  - 控制HTTP请求的生命周期
-  - 数据库查询超时控制
-  - 微服务RPC通信的trace和取消传递
-  - 并发任务取消
-  - 信号相应和服务优雅关闭
-- 常用方法：
-  - `context.Background()`生成空的用不取消的context，通常作为顶层context
-  - `context.TODO()`临时使用的context
-  - `context.WithCancel(parent)`可取消的context
-  - `context.WithTimeout(parent, timeout)`带超时的context
-  - `context.WithDeadline(parent, deadline)`带截止时间的context
-  - `context.WithValue(parent, key, val)`带键值对数据的context
+> 如果没有context，当启动了一个耗时的goroutine，但用户取消了请求，这个goroutine仍然会继续执行，导致goroutine泄漏
+
+多个goroutine处理同一个请求时，就需要：
+
+- 统一取消所有关联的goroutine（如请求超时或者用户取消）
+- 传递截至时间（deadline）
+- 传递请求相关的元数据（如身份认证信息、Trace ID）
+- 避免goroutine泄露（内存泄漏）
+
+Context是一个interface，包含以下方法：
+
+- `Deadline() (deadline time.Time, ok bool)`返回截至时间
+- `Done() <-chan struct{}`返回一个channel，关闭代表取消信号
+- `Err() error`取消原因
+- `Value(key interface{}) interface{}`传递的键值对数据
+
+| 函数         | 作用           | 场景示例                                   |
+|--------------|----------------|------------------------------------------|
+| WithCancel   | 手动取消       | 用户点击了“取消”按钮，通知所有子任务停止        |
+| WithTimeout  | 超时自动取消   | 数据库查询不能超过 500ms，否则报超时           |
+| WithDeadline | 截止日期取消   | 任务必须在 2026-02-03 00:05 前完成           |
+| WithValue    | 传递元数据     | 在链路中传递 TraceID 或用户登录信息           |
+
+常用方法：
+
+- `context.Background()`生成空的用不取消的context，通常作为顶层context
+- `context.TODO()`临时使用的context
+- `context.WithCancel(parent)`可取消的context
+- `context.WithTimeout(parent, timeout)`带超时的context
+- `context.WithDeadline(parent, deadline)`带截止时间的context
+- `context.WithValue(parent, key, val)`带键值对数据的context
+
+```go
+// 主协程控制子协程的生存时间
+func main() {
+    // 1. 创建一个 2 秒后自动过期的上下文
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel() // 养成好习惯：无论是否超时，最后都释放资源
+
+    go doSomething(ctx)
+
+    // 阻塞主进程，观察结果
+    select {
+    case <-time.After(3 * time.Second):
+        fmt.Println("主进程结束")
+    }
+}
+
+func doSomething(ctx context.Context) {
+    for {
+        select {
+        case <-ctx.Done(): // 2. 关键：监听取消信号
+            fmt.Println("子任务收到信号：已超时，正在退出...")
+            return
+        default:
+            fmt.Println("子任务正在工作中...")
+            time.Sleep(500 * time.Millisecond)
+        }
+    }
+}
+```
+
+```go
+// 传递元数据
+func main() {
+    // 存入一个 TraceID
+    ctx := context.WithValue(context.Background(), "traceID", "123456")
+    handleRequest(ctx)
+}
+
+func handleRequest(ctx context.Context) {
+    // 取出 TraceID
+    if id, ok := ctx.Value("traceID").(string); ok {
+        fmt.Println("当前请求的 TraceID:", id)
+    }
+}
+```
+
+使用场景：
+
+- 控制HTTP请求的生命周期
+- 数据库查询超时控制
+- 微服务RPC通信的trace和取消传递
+- 并发任务取消
+- 信号相应和服务优雅关闭
 
 ### 怎么安全读写共享变量
 
@@ -1485,7 +1671,7 @@ func BenchmarkXxx(b *testing.B)
 - Type实例通用方法
 
 | 方法     | 说明                 |
-| -------- | -------------------- |
+|----------|----------------------|
 | Kind()   | 返回底层枚举种类     |
 | Name()   | 返回类型的名称       |
 | String() | 返回类型的字符串表示 |
@@ -1494,49 +1680,49 @@ func BenchmarkXxx(b *testing.B)
 
 - Type为结构体时的方法：
 
-| 方法              | 说明                                                      |
-| ----------------- | --------------------------------------------------------- |
-| NumField()        | 返回结构体中字段总数                                      |
+| 方法              | 说明                                                    |
+|-------------------|---------------------------------------------------------|
+| NumField()        | 返回结构体中字段总数                                    |
 | Field(i)          | 返回第i个字段的信息（reflect.StructField）                |
 | FieldByName(name) | 根据字段名返回对应字段的信息（reflect.StructField）       |
 | FieldByIndex(idx) | 根据字段索引切片返回对应字段的信息（reflect.StructField） |
 
 - 其他方法
 
-| 方法        | 说明                                  |
-| ----------- | ------------------------------------- |
-| Elem()      | 获取指向元素或容器内部元素的类型      |
-| Key()       | 返回map类型的键类型                   |
-| Len()       | 返回数组定义的长度                    |
-| NumIn()     | 返回函数的入参个数                    |
+| 方法        | 说明                                |
+|-------------|-------------------------------------|
+| Elem()      | 获取指向元素或容器内部元素的类型    |
+| Key()       | 返回map类型的键类型                 |
+| Len()       | 返回数组定义的长度                  |
+| NumIn()     | 返回函数的入参个数                  |
 | In(i)       | 返回函数的第i个入参（reflect.Type）   |
-| NumOut()    | 返回函数的返回值个数                  |
+| NumOut()    | 返回函数的返回值个数                |
 | Out(i)      | 返回函数的第i个返回值（reflect.Type） |
-| NumMethod() | 返回类型的导出方法个数                |
-| Method(i)   | 返回类型的第i个方法的信息             |
+| NumMethod() | 返回类型的导出方法个数              |
+| Method(i)   | 返回类型的第i个方法的信息           |
 
 **reflect.Value结构体方法：**
 
-| 方法/属性               | 说明                                                    |
-| ----------------------- | ------------------------------------------------------- |
-| NumField()              | 返回结构体中字段总数                                    |
-| Field(i)                | 返回第i个字段的值（reflect.Value）                      |
-| FieldByName(name)       | 根据字段名返回对应字段的值（reflect.Value）             |
+| 方法/属性               | 说明                                                 |
+|-------------------------|------------------------------------------------------|
+| NumField()              | 返回结构体中字段总数                                 |
+| Field(i)                | 返回第i个字段的值（reflect.Value）                     |
+| FieldByName(name)       | 根据字段名返回对应字段的值（reflect.Value）            |
 | Elem()                  | 如果Value是指针，返回指向的对象；如果是接口，返回底层值 |
-| Len()/Cap()             | 返回容器的长度/容量                                     |
-| Index(i)                | 返回容器中第i个元素的reflect.Value对象                  |
-| MapKeys()               | 返回map的每个键reflect.Value对象组成的切片              |
-| MapRange()              | 返回一个迭代器，用于遍历map的键值对                     |
-| MapIndex(key)           | 从map中获取指定键对应的值                               |
-| SetMapIndex(key, value) | 设置map中指定键对应的值                                 |
-| Method(i)               | 返回一个代表该方法的reflect.Value对象，Func类型         |
-| MethodByName(name)      | 根据方法名返回对应方法                                  |
-| Call(args []Value)      | 调用方法，传入参数`[]Value`切片，返回结果`[]Value`切片  |
-| SetInt(x int64)         | 设置有符号整数值                                        |
-| SetUnit(x uint64)       | 设置无符号整数值                                        |
-| SetString(s string)     | 设置字符串值                                            |
-| SetBool(b bool)         | 设置布尔值                                              |
-| Set(x Value)            | 将另一个reflect.Value的值赋给当前Value                  |
+| Len()/Cap()             | 返回容器的长度/容量                                  |
+| Index(i)                | 返回容器中第i个元素的reflect.Value对象               |
+| MapKeys()               | 返回map的每个键reflect.Value对象组成的切片           |
+| MapRange()              | 返回一个迭代器，用于遍历map的键值对                   |
+| MapIndex(key)           | 从map中获取指定键对应的值                            |
+| SetMapIndex(key, value) | 设置map中指定键对应的值                              |
+| Method(i)               | 返回一个代表该方法的reflect.Value对象，Func类型       |
+| MethodByName(name)      | 根据方法名返回对应方法                               |
+| Call(args []Value)      | 调用方法，传入参数`[]Value`切片，返回结果`[]Value`切片 |
+| SetInt(x int64)         | 设置有符号整数值                                     |
+| SetUnit(x uint64)       | 设置无符号整数值                                     |
+| SetString(s string)     | 设置字符串值                                         |
+| SetBool(b bool)         | 设置布尔值                                           |
+| Set(x Value)            | 将另一个reflect.Value的值赋给当前Value               |
 
 **reflect转换关系**
 
