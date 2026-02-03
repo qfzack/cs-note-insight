@@ -841,11 +841,11 @@ func main() {
 
 #### nil、关闭的channel、有数据的channel，再进行读、写、关闭会怎么样
 
-| Channel状态  | 发送操作   | 接收操作                          | 关闭操作 |
-|--------------|------------|---------------------------------|----------|
-| nil          | 阻塞       | 阻塞                            | panic    |
-| 已关闭       | panic      | 零值，ok=false，或者数据，ok=false | panic    |
-| 有数据       | 成功或阻塞 | 成功或阻塞                         | 正常关闭 |
+| Channel状态 | 发送操作   | 接收操作                           | 关闭操作 |
+| ----------- | ---------- | ---------------------------------- | -------- |
+| nil         | 阻塞       | 阻塞                               | panic    |
+| 已关闭      | panic      | 零值，ok=false，或者数据，ok=false | panic    |
+| 有数据      | 成功或阻塞 | 成功或阻塞                         | 正常关闭 |
 
 #### hand off机制是什么
 
@@ -1091,12 +1091,12 @@ Context是一个interface，包含以下方法：
 - `Err() error`取消原因
 - `Value(key interface{}) interface{}`传递的键值对数据
 
-| 函数         | 作用           | 场景示例                                   |
-|--------------|----------------|------------------------------------------|
-| WithCancel   | 手动取消       | 用户点击了“取消”按钮，通知所有子任务停止        |
-| WithTimeout  | 超时自动取消   | 数据库查询不能超过 500ms，否则报超时           |
-| WithDeadline | 截止日期取消   | 任务必须在 2026-02-03 00:05 前完成           |
-| WithValue    | 传递元数据     | 在链路中传递 TraceID 或用户登录信息           |
+| 函数         | 作用         | 场景示例                                 |
+| ------------ | ------------ | ---------------------------------------- |
+| WithCancel   | 手动取消     | 用户点击了“取消”按钮，通知所有子任务停止 |
+| WithTimeout  | 超时自动取消 | 数据库查询不能超过 500ms，否则报超时     |
+| WithDeadline | 截止日期取消 | 任务必须在 2026-02-03 00:05 前完成       |
+| WithValue    | 传递元数据   | 在链路中传递 TraceID 或用户登录信息      |
 
 常用方法：
 
@@ -1218,6 +1218,52 @@ go的Mutex有两种模式：
   - 当等待队列为空，或者一个goroutine拿到锁时发现其等待时间小于1ms，就会结束饥饿模式，切回正常模式
 
 > 自旋：goroutine不让出CPU，并在一个小循环里不断尝试获取锁，如果锁在短时间内被释放，就可以继续执行
+
+### 算法题：并发顺序输出
+
+用N个goroutine按顺序打印数字，goroutine1打印1，goroutine2打印2，...,goroutineN打印N，然后goroutine1打印N+1，goroutine2打印N+2，依此类推，直到打印到max为止
+
+```go
+func main() {
+    wg := sync.WaitGroup{}
+    N := 5     // number of goroutines
+    max := 100 // print up to max-1
+
+    chs := make([]chan int, N)
+    for i := 0; i < N; i++ {
+        chs[i] = make(chan int)
+    }
+
+    for i := 0; i < N; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            nextChan := chs[(id+1)%N]
+
+            // 当前 Goroutine 结束时，关闭下一个 Channel，以通知下一个 Goroutine 退出
+            // 形成链式反应: G(end) -> close -> G(0) -> close -> G(1)...
+            defer close(nextChan)
+
+            for num := range chs[id] {
+                out := fmt.Sprintf("goroutine number: %d, output: %d", id, num)
+                fmt.Println(out)
+
+                // 如果达到最大值，直接返回，触发 defer close，打破循环
+                if num+1 >= max {
+                    return
+                }
+                // 否则，将接力棒（下一个数字）传给下一个人
+                nextChan <- num + 1
+            }
+        }(i)
+    }
+
+    // 启动引擎：给第 0 个 Goroutine 发送第一个数字
+    chs[0] <- 0
+
+    wg.Wait()
+}
+```
 
 ## GMP
 
@@ -1671,7 +1717,7 @@ func BenchmarkXxx(b *testing.B)
 - Type实例通用方法
 
 | 方法     | 说明                 |
-|----------|----------------------|
+| -------- | -------------------- |
 | Kind()   | 返回底层枚举种类     |
 | Name()   | 返回类型的名称       |
 | String() | 返回类型的字符串表示 |
@@ -1680,49 +1726,49 @@ func BenchmarkXxx(b *testing.B)
 
 - Type为结构体时的方法：
 
-| 方法              | 说明                                                    |
-|-------------------|---------------------------------------------------------|
-| NumField()        | 返回结构体中字段总数                                    |
+| 方法              | 说明                                                      |
+| ----------------- | --------------------------------------------------------- |
+| NumField()        | 返回结构体中字段总数                                      |
 | Field(i)          | 返回第i个字段的信息（reflect.StructField）                |
 | FieldByName(name) | 根据字段名返回对应字段的信息（reflect.StructField）       |
 | FieldByIndex(idx) | 根据字段索引切片返回对应字段的信息（reflect.StructField） |
 
 - 其他方法
 
-| 方法        | 说明                                |
-|-------------|-------------------------------------|
-| Elem()      | 获取指向元素或容器内部元素的类型    |
-| Key()       | 返回map类型的键类型                 |
-| Len()       | 返回数组定义的长度                  |
-| NumIn()     | 返回函数的入参个数                  |
+| 方法        | 说明                                  |
+| ----------- | ------------------------------------- |
+| Elem()      | 获取指向元素或容器内部元素的类型      |
+| Key()       | 返回map类型的键类型                   |
+| Len()       | 返回数组定义的长度                    |
+| NumIn()     | 返回函数的入参个数                    |
 | In(i)       | 返回函数的第i个入参（reflect.Type）   |
-| NumOut()    | 返回函数的返回值个数                |
+| NumOut()    | 返回函数的返回值个数                  |
 | Out(i)      | 返回函数的第i个返回值（reflect.Type） |
-| NumMethod() | 返回类型的导出方法个数              |
-| Method(i)   | 返回类型的第i个方法的信息           |
+| NumMethod() | 返回类型的导出方法个数                |
+| Method(i)   | 返回类型的第i个方法的信息             |
 
 **reflect.Value结构体方法：**
 
-| 方法/属性               | 说明                                                 |
-|-------------------------|------------------------------------------------------|
-| NumField()              | 返回结构体中字段总数                                 |
-| Field(i)                | 返回第i个字段的值（reflect.Value）                     |
-| FieldByName(name)       | 根据字段名返回对应字段的值（reflect.Value）            |
-| Elem()                  | 如果Value是指针，返回指向的对象；如果是接口，返回底层值 |
-| Len()/Cap()             | 返回容器的长度/容量                                  |
-| Index(i)                | 返回容器中第i个元素的reflect.Value对象               |
-| MapKeys()               | 返回map的每个键reflect.Value对象组成的切片           |
-| MapRange()              | 返回一个迭代器，用于遍历map的键值对                   |
-| MapIndex(key)           | 从map中获取指定键对应的值                            |
-| SetMapIndex(key, value) | 设置map中指定键对应的值                              |
-| Method(i)               | 返回一个代表该方法的reflect.Value对象，Func类型       |
-| MethodByName(name)      | 根据方法名返回对应方法                               |
-| Call(args []Value)      | 调用方法，传入参数`[]Value`切片，返回结果`[]Value`切片 |
-| SetInt(x int64)         | 设置有符号整数值                                     |
-| SetUnit(x uint64)       | 设置无符号整数值                                     |
-| SetString(s string)     | 设置字符串值                                         |
-| SetBool(b bool)         | 设置布尔值                                           |
-| Set(x Value)            | 将另一个reflect.Value的值赋给当前Value               |
+| 方法/属性               | 说明                                                    |
+| ----------------------- | ------------------------------------------------------- |
+| NumField()              | 返回结构体中字段总数                                    |
+| Field(i)                | 返回第i个字段的值（reflect.Value）                      |
+| FieldByName(name)       | 根据字段名返回对应字段的值（reflect.Value）             |
+| Elem()                  | 如果Value是指针，返回指向的对象；如果是接口，返回底层值     |
+| Len()/Cap()             | 返回容器的长度/容量                                     |
+| Index(i)                | 返回容器中第i个元素的reflect.Value对象                  |
+| MapKeys()               | 返回map的每个键reflect.Value对象组成的切片              |
+| MapRange()              | 返回一个迭代器，用于遍历map的键值对                     |
+| MapIndex(key)           | 从map中获取指定键对应的值                               |
+| SetMapIndex(key, value) | 设置map中指定键对应的值                                 |
+| Method(i)               | 返回一个代表该方法的reflect.Value对象，Func类型         |
+| MethodByName(name)      | 根据方法名返回对应方法                                  |
+| Call(args []Value)      | 调用方法，传入参数`[]Value`切片，返回结果`[]Value`切片  |
+| SetInt(x int64)         | 设置有符号整数值                                        |
+| SetUnit(x uint64)       | 设置无符号整数值                                        |
+| SetString(s string)     | 设置字符串值                                            |
+| SetBool(b bool)         | 设置布尔值                                              |
+| Set(x Value)            | 将另一个reflect.Value的值赋给当前Value                  |
 
 **reflect转换关系**
 
