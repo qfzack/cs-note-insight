@@ -31,28 +31,6 @@ Docker容器是操作系统层级的轻量级虚拟化技术，是一个运行�
 - Restarting：容器重新启动
 - Dead：容器异常无法恢复
 
-### Docker的网络模式
-
-Docker提供了几种不同的网络模式来满足容器间通信的不同需求：
-
-- **bridge**（默认）：容器启动后会自动连接到bridge网络，每个容器分配一个私有IP，容器间通过IP或容器名通信，可以使用`-p`将容器端口映射到宿主机
-- **host**：使用宿主机网络，与宿主机共用网络命名空间（不再有隔离的IP），容器中运行的服务可以直接使用宿主机的IP和端口
-- **none**：容器启动时无网络，容器没有IP，也无法连接到外部网络
-- **共享容器网络**：与指定的容器共享网络命名空间，所有网络配置都一样（IP、端口等）
-
-```shell
-docker run -d --name container_a nginx
-docker run --network container:container_a busybox
-```
-
-- **自定义网络**：使用docker network create创建自定义的网络，容器可以通过名字相互访问
-
-```shell
-docker network create mynet
-docker run -d --network mynet --name web nginx
-docker run -it --network mynet busybox ping web
-```
-
 ### Docker的数据持久化
 
 创建容器的时候通过挂载（Mount）将宿主机的存储资源挂载到容器内部使用，常见的挂载方式有三种：
@@ -629,6 +607,81 @@ CSI的实现涉及存储的生命周期管理（创建、挂载、格式化）�
 - Node Service：在每个节点运行，负责NodeStageVolumn（格式化磁盘）、NodePublishVolumn（把磁盘mount到容器的具体目录）
 
 在实现CSI的时候，K8s内部逻辑非常复杂，涉及如何监控PVC、如何调度节点、如何失败重试等，因此K8s采用Sidecar模式，将通用的K8s逻辑做成几个标准的Sidecar容器，这样存储厂商可以专注开发CSI Driver与自己的硬件交互的逻辑，然后将这个Driver与Sidecar容器运行在同一个Pod里
+
+## 容器网络
+
+### Docker容器网络模式
+
+Docker提供了几种不同的网络模式来满足容器间通信的不同需求：
+
+1. **bridge**（默认）：容器启动后会自动连接到bridge网络，每个容器分配一个私有IP，容器间通过IP或容器名通信，可以使用`-p`将容器端口映射到宿主机
+
+2. **host**：使用宿主机网络，与宿主机共用网络命名空间（不再有隔离的IP），容器中运行的服务可以直接使用宿主机的IP和端口
+
+    ```shell
+    docker run --network host nginx
+    ```
+
+3. **none**：容器启动时无网络，容器没有IP，也无法连接到外部网络
+
+    ```shell
+    docker run --network none busybox
+    ```
+
+4. **共享容器网络**：与指定的容器共享网络命名空间，所有网络配置都一样（IP、端口等）
+
+    ```shell
+    docker run -d --name container_a nginx
+    docker run --network container:container_a busybox
+    ```
+
+5. **自定义网络**：使用docker network create创建自定义的网络，容器可以通过名字相互访问
+
+    ```shell
+    docker network create mynet
+    docker run -d --network mynet --name web nginx
+    docker run -it --network mynet busybox ping web
+    ```
+
+### Bridge网络原理
+
+当容器使用bridge网络模式启动时，Docker会在宿主机上创建一个虚拟网桥（默认名为`docker0`），然后会创建一个虚拟以太网对（veth pair），一端连接到`docker0`网桥，另一端连接到容器里，改名为`eth0`，并为`eth0`分配一个私有IP地址（127.17.x.x），容器内设置默认路由指向`docker0`网桥的IP
+
+当宿主机开启IP Forwarding（路由转发），并配置iptables的SNAT规则，允许容器流量通过宿主机的网络接口访问外部网络
+
+当从容器内部访问互联网时，数据包的路径为：
+
+1. 数据包离开容器的虚拟网卡`eth0`，到达宿主机上的虚拟网桥`docker0`
+2. 宿主机内核查看数据包，发现目标地址不在本地网桥范围
+3. 宿主机的iptables执行SNAT，将数据包的源IP（容器私有IP）修改为宿主机的公网/局域网IP
+4. 外界响应返回宿主机后，内核根据记录再将数据包转发回对应的容器
+
+当外界访问容器时，一般要先开启容器的端口映射，实际是在宿主机的iptables中添加了一条DNAT（目标地址转换规则），来监听宿主机的指定端口，并将该端口流量转发到容器的指定端口
+
+### 容器间的通信方式
+
+容器间的通信可以分为同主机通信和跨主机通信：
+
+同主机通信的方式有：
+
+1. 使用Bridge网络直接通过容器IP访问
+2. 自定义网桥来通过容器名/别名进行通信，docker会内置DNS服务器进行解析
+3. 共享容器网络来实现直接访问
+
+跨主机通信的方式有：
+
+1. Overlay网络（基于VXLAN）
+2. 直接路由（如静态路由配置）
+3. 第三方插件（如Calico、Flannel）
+
+### 自定义网桥
+
+自动DNS解析、更好的隔离性、热插拔
+
+### Overlay网络
+
+VXLAN
+
 
 ## 常见面试题
 
